@@ -1,7 +1,7 @@
 {
-  "name": "codex-orchestration",
+  "name": "codex-orchestration-reviewer",
   "interface": {
-    "displayName": "Codex Orchestration"
+    "displayName": "Codex Orchestration — Planner / Advisor / Reviewer"
   },
   "plugins": [
     {

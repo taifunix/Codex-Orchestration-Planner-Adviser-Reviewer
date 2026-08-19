@@ -129,9 +129,11 @@ The bundled Claude routes use first-party Claude authentication through the offi
 Add this repository as a Codex plugin marketplace and install the existing plugin package:
 
 ```bash
-codex plugin marketplace add taifunix/Codex-Orchestration-Planner-Adviser-Reviewer
-codex plugin add codex-orchestration@codex-orchestration
+codex plugin marketplace add taifunix/Codex-Orchestration-Planner-Adviser-Reviewer --ref main
+codex plugin add codex-orchestration@codex-orchestration-reviewer
 ```
+
+The fork uses the marketplace ID `codex-orchestration-reviewer`, so it can coexist with the upstream `codex-orchestration` marketplace without a source-name collision.
 
 Then fully restart Codex Desktop and start a new task.
 
