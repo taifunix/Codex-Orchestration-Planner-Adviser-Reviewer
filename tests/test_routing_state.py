@@ -45,6 +45,17 @@ def opus_route(server: str = "fable-advisor-python3") -> dict[str, str]:
     }
 
 
+def sonnet_reviewer_route(
+    server: str = "fable-advisor-python3",
+) -> dict[str, str]:
+    return {
+        "kind": "claude_subscription",
+        "model": "claude-sonnet-5",
+        "effort": "medium",
+        "server": server,
+    }
+
+
 def genuine_state(schema: int) -> dict[str, object]:
     managed: dict[str, object] = {
         "mode": f"{STATE.MANAGED_MARKER}\nmode body",
@@ -98,6 +109,19 @@ class RoutingStateTests(unittest.TestCase):
             with self.subTest(schema=schema):
                 state = genuine_state(schema)
                 self.assertIs(STATE.validate_routing_state(state), state)
+
+    def test_schema_six_accepts_sealed_sonnet_reviewer_route(self) -> None:
+        state = genuine_state(5)
+        state["schema"] = 6
+        state["policy_version"] = 6
+        state["planner"] = {
+            "kind": "model",
+            "model": "gpt-planner",
+            "effort": "high",
+        }
+        state["reviewer"] = sonnet_reviewer_route()
+
+        self.assertIs(STATE.validate_routing_state(state), state)
 
     def test_scalar_conversion_and_retained_disabled_mcp_are_accepted(self) -> None:
         state = genuine_state(3)

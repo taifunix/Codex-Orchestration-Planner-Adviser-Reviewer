@@ -17,6 +17,8 @@ FABLE_MODEL = "claude-fable-5"
 FABLE_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 OPUS_MODEL = "claude-opus-5"
 OPUS_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
+SONNET_MODEL = "claude-sonnet-5"
+SONNET_EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max"})
 FABLE_SERVERS = frozenset(
     {
         "fable-advisor-python3",
@@ -25,7 +27,7 @@ FABLE_SERVERS = frozenset(
     }
 )
 
-_SCHEMA_POLICY_PAIRS = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5}
+_SCHEMA_POLICY_PAIRS = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+/@-]{0,199}$")
 _AGENT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 _EFFORT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -106,7 +108,7 @@ def _validate_route(route: Any, *, seat: str, schema: int) -> str:
             f"{seat} model route has an invalid model",
         )
         _require(
-            route["model"] not in {FABLE_MODEL, OPUS_MODEL},
+            route["model"] not in {FABLE_MODEL, OPUS_MODEL, SONNET_MODEL},
             f"{seat} model route uses a reserved Claude model",
         )
         _require(
@@ -143,18 +145,36 @@ def _validate_route(route: Any, *, seat: str, schema: int) -> str:
         )
     elif kind == "claude_subscription":
         _require(
-            seat in {"planner", "advisor"} and schema >= 5,
+            (
+                seat in {"planner", "advisor"}
+                and schema >= 5
+                or seat == "reviewer"
+                and schema >= 6
+            ),
             f"{seat} cannot use a Claude subscription route in schema {schema}",
         )
         _require(
             set(route) == {"kind", "model", "effort", "server"},
             f"{seat} Claude subscription route has the wrong shape",
         )
-        _require(route["model"] == OPUS_MODEL, "Claude subscription model is not pinned")
-        _require(
-            type(route["effort"]) is str and route["effort"] in OPUS_EFFORTS,
-            "Claude Opus 5 effort is unsupported",
-        )
+        if seat == "reviewer":
+            _require(
+                route["model"] == SONNET_MODEL,
+                "Claude Reviewer subscription model is not pinned",
+            )
+            _require(
+                type(route["effort"]) is str and route["effort"] in SONNET_EFFORTS,
+                "Claude Sonnet 5 effort is unsupported",
+            )
+        else:
+            _require(
+                route["model"] == OPUS_MODEL,
+                "Claude subscription model is not pinned",
+            )
+            _require(
+                type(route["effort"]) is str and route["effort"] in OPUS_EFFORTS,
+                "Claude Opus 5 effort is unsupported",
+            )
         _require(
             type(route["server"]) is str and route["server"] in FABLE_SERVERS,
             "Claude subscription server is unsupported",
@@ -230,7 +250,7 @@ def _validate_scalar_conversion(state: dict[str, Any], managed: dict[str, Any]) 
 
 
 def validate_routing_state(value: Any) -> dict[str, Any]:
-    """Validate and return one exact, complete persisted schema 1 through 5.
+    """Validate and return one exact, complete persisted schema 1 through 6.
 
     Unknown keys and future extensions are rejected intentionally. Callers must
     perform their own secure file read and any caller-specific path/seat checks.
@@ -254,6 +274,8 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
         expected_top.add("planner")
     if schema >= 4:
         expected_top.add("designer")
+    if schema >= 6:
+        expected_top.add("reviewer")
     _require(set(value) == expected_top, "top-level state shape is unsupported")
     _require(value["managed_by"] == "codex-orchestration", "state owner is invalid")
     _require(
@@ -267,6 +289,7 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
     planner = value.get("planner")
     advisor = value["advisor"]
     designer = value.get("designer")
+    reviewer = value.get("reviewer")
     if planner is not None:
         _validate_route(planner, seat="planner", schema=schema)
     if advisor is not None:
@@ -277,6 +300,8 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
             designer_kind == "model",
             "persistent Designer must use a direct model route",
         )
+    if reviewer is not None:
+        _validate_route(reviewer, seat="reviewer", schema=schema)
     _validate_route_separation(planner, advisor)
 
     managed = value["managed"]
@@ -313,7 +338,7 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
 
     subscription_routes = [
         route
-        for route in (planner, advisor)
+        for route in (planner, advisor, reviewer)
         if type(route) is dict
         and route.get("kind") in {"fable", "claude_subscription"}
     ]

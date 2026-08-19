@@ -15,12 +15,32 @@ SCRIPTS = (
     / "codex-orchestration"
     / "scripts"
 )
+
 sys.path.insert(0, str(SCRIPTS))
 
 import external_providers as PROVIDERS  # noqa: E402
 
 
 class ExternalProviderTests(unittest.TestCase):
+    def test_bundled_claude_sonnet_reviewer_template_is_strict(self) -> None:
+        sonnet = PROVIDERS.load_provider("claude-sonnet")
+
+        self.assertEqual(sonnet["lane"], "subscription")
+        self.assertEqual(sonnet["runtime_identity"], "cli_metadata")
+        self.assertEqual(set(sonnet["models"]), {"claude-sonnet-5"})
+
+        model = sonnet["models"]["claude-sonnet-5"]
+        self.assertEqual(model["default_effort"], "medium")
+        self.assertEqual(
+            model["supported_efforts"],
+            ["low", "medium", "high", "xhigh", "max"],
+        )
+
+        adapter = sonnet["subscription_adapter"]
+        self.assertEqual(adapter["module"], "fable_advisor_mcp")
+        self.assertEqual(adapter["allowed_seats"], ["reviewer"])
+        self.assertEqual(adapter["allowed_operations"], ["review_code"])
+
     def test_bundled_openrouter_and_claude_templates_are_strict(self) -> None:
         openrouter = PROVIDERS.load_provider("openrouter")
         fable = PROVIDERS.load_provider("claude-fable")

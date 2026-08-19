@@ -23,6 +23,7 @@ $codex-orchestration:codex-orchestration setup executor: GPT-5.6 Luna Extra High
 $codex-orchestration:codex-orchestration setup planner: Claude Fable 5 High, advisor: GPT-5.6 Sol High, executor: GPT-5.6 Luna Extra High
 $codex-orchestration:codex-orchestration setup advisor: Claude Opus 5 XHigh, executor: GPT-5.6 Luna Extra High
 $codex-orchestration:codex-orchestration setup designer: GPT-5.6 Sol High, executor: GPT-5.6 Luna Extra High
+$codex-orchestration:codex-orchestration setup reviewer: Claude Sonnet 5 Medium, executor: GPT-5.6 Luna Extra High
 $codex-orchestration:codex-orchestration Planner: Claude Fable 5 High, Designer: Kimi K3
 $codex-orchestration:codex-orchestration --update
 $codex-orchestration:codex-orchestration create project role: researcher
@@ -69,22 +70,22 @@ lifecycle and a provider-pinned custom agent.
 
 `remove custom roles` cleans only verified plugin-managed advisor/executor files. Arbitrary native roles are user-owned. An invocation with native seats and work but no control verb is a current-task override and must not rewrite config. Explicit External Model seat labels are the exception: they may perform only the clean preparation, connection, and readiness writes authorized in the External Model lifecycle below.
 
-Explicit seat labels are authoritative. `planner:` configures only Planner, `advisor:` configures only Advisor, `designer:` configures only Designer, and `executor:` configures only Executor. Never infer or change a seat from a model's historical use, default role, cached description, or provider; in particular, never reinterpret a supplied `planner:` model as an Advisor or a supplied `designer:` model as an Executor. Saved defaults may fill only omitted seats and never override a seat supplied in the current invocation.
+Explicit seat labels are authoritative. `planner:` configures only Planner, `advisor:` configures only Advisor, `designer:` configures only Designer, `executor:` configures only Executor, and `reviewer:` configures only Reviewer. Never infer or change a seat from a model's historical use, default role, cached description, or provider; in particular, never reinterpret a supplied `planner:` model as an Advisor or a supplied `designer:` model as an Executor. Saved defaults may fill only omitted seats and never override a seat supplied in the current invocation.
 
-The executor is required for setup or a task-local override. It is not required for a custom-role creation request. Planner, advisor, and designer are optional: omitted planner means the current root model plans, omitted advisor means `advisor: none`, and omitted designer means `designer: none`. Do not ask separate planner or advisor questions, or a separate designer question, unless the user asks for help choosing them.
+The executor is required for setup or a task-local override. It is not required for a custom-role creation request. Planner, advisor, designer, and Reviewer are optional: omitted planner means the current root model plans, omitted advisor means `advisor: none`, omitted designer means `designer: none`, and omitted reviewer means `reviewer: none`. Do not ask separate planner or advisor questions, or separate designer or Reviewer questions, unless the user asks for help choosing them.
 
-For both persistent setup and task-local overrides, reject an identical Planner and Advisor route: the same direct model ID, the same custom-agent name, or more than one bundled Claude subscription seat across Fable 5 and Opus 5. Independent critique is required.
+For both persistent setup and task-local overrides, reject an identical Planner and Advisor route: the same direct model ID, the same custom-agent name, or more than one bundled Claude subscription seat across Fable 5, Opus 5, and Sonnet 5. Independent critique is required.
 
 If the executor is missing, ask only:
 
 ```text
-Which executor model and effort should Codex use? You can optionally include a planner, advisor, and designer; omission uses the root as planner and no advisor or designer.
+Which executor model and effort should Codex use? You can optionally include a planner, advisor, designer, and reviewer; omission uses the root as planner and no advisor, designer, or Reviewer.
 ```
 
 Because explicit skills may not reload from a bare reply, include a ready-to-copy line using the exact label shown by the client and preserve the original work:
 
 ```text
-<exact-skill-label> setup executor=<model>@<effort-or-auto>, planner=<model>@<effort-or-auto>|root, advisor=<model>@<effort-or-auto>|none, designer=<model>@<effort-or-auto>|none
+<exact-skill-label> setup executor=<model>@<effort-or-auto>, planner=<model>@<effort-or-auto>|root, advisor=<model>@<effort-or-auto>|none, designer=<model>@<effort-or-auto>|none, reviewer=Claude-Sonnet-5@<effort-or-auto>|none
 ```
 
 For a task-local request, append `— <original task>`. Keep every supplied modifier. Do not lose the user's task while collecting a model choice.
@@ -95,7 +96,7 @@ report that seat as unavailable and stop under the required-route rules; never m
 its model to another seat. For an External Model seat still crossing a valid
 lifecycle boundary, report its exact lifecycle state and next action, not unavailable.
 Status and diagnostic commands may show omitted defaults explicitly,
-including `Designer: none` and `Advisor: none`; a successful activation
+including `Designer: none`, `Advisor: none`, and `Reviewer: none`; a successful activation
 confirmation follows the concise contract below instead.
 
 ### Activation confirmation
@@ -130,7 +131,7 @@ continue that work.
 
 If an old prompt contains `orchestrator:`, explain that the current task model already owns that role. Ignore that seat instead of switching or persisting it.
 
-Normalize `Extra High` to `xhigh`. For Claude Fable 5, accept `Low`, `Medium`, `High`, `XHigh`, `Max`, or `Ultra`. Omission or `Auto` means `High`; `Ultra` is a user-facing alias for Claude Code's actual `max` setting and must be reported as that mapping. Route Fable with `--planner-fable --planner-effort <normalized-effort>` or `--advisor-fable --advisor-effort <normalized-effort>`, not through the Codex model catalog. For Claude Opus 5, accept exactly `Low`, `Medium`, `High`, `XHigh`, or `Max`; omission or `Auto` means `High`, and `Ultra` is not an alias. Route it with `--planner-opus` or `--advisor-opus` plus the normalized effort. Resolve every other display name to an exact ID only through the executing host's model catalog, picker, a loaded custom agent, or official provider documentation. Never invent an ID. For persistent direct routing, resolve `auto` to the catalog's concrete default.
+Normalize `Extra High` to `xhigh`. For Claude Fable 5, accept `Low`, `Medium`, `High`, `XHigh`, `Max`, or `Ultra`. Omission or `Auto` means `High`; `Ultra` is a user-facing alias for Claude Code's actual `max` setting and must be reported as that mapping. Route Fable with `--planner-fable --planner-effort <normalized-effort>` or `--advisor-fable --advisor-effort <normalized-effort>`, not through the Codex model catalog. For Claude Opus 5, accept exactly `Low`, `Medium`, `High`, `XHigh`, or `Max`; omission or `Auto` means `High`, and `Ultra` is not an alias. Route it with `--planner-opus` or `--advisor-opus` plus the normalized effort. For Claude Sonnet 5 Reviewer, accept exactly `Low`, `Medium`, `High`, `XHigh`, or `Max`; omission or `Auto` means `Medium`. Route it with `--reviewer-sonnet` plus `--reviewer-effort <normalized-effort>`. Resolve every other display name to an exact ID only through the executing host's model catalog, picker, a loaded custom agent, or official provider documentation. Never invent an ID. For persistent direct routing, resolve `auto` to the catalog's concrete default.
 
 Persistent Designer accepts only a direct same-provider model, not a bundled Claude
 MCP or unqualified custom-agent route. Route it with `--designer-model` plus
@@ -303,15 +304,15 @@ or ambiguous data for manual recovery. An intentionally replaced user helper may
 accepted only through preview/apply `trust-helper` at the same absolute path, which
 clears qualification and requires authentication plus Gate 0 again.
 
-Claude Fable 5 and Claude Opus 5 are the sealed first-party subscription adapters.
-They use only the Planner/Advisor MCP operations and existing first-party login,
+Claude Fable 5, Claude Opus 5, and Claude Sonnet 5 are the sealed first-party subscription adapters.
+Fable and Opus use only the Planner/Advisor MCP operations; Claude Sonnet 5 is sealed to the Reviewer `review_code` operation. All three use the existing first-party login,
 no-tools, no-session-persistence, runtime-model-metadata contract. Do not route
 them through the native External Model provider configurator and do not generalize
 their adapter to arbitrary CLIs.
 
 ## Create arbitrary custom roles
 
-Use native Codex custom-agent files for roles beyond the built-in planner, advisor, designer, and executor seats. Examples include researcher, reviewer, writer, supervisor, security auditor, browser debugger, or domain expert.
+Use native Codex custom-agent files for roles beyond the built-in planner, advisor, designer, executor, and Reviewer seats. Examples include researcher, writer, supervisor, security auditor, browser debugger, or domain expert.
 
 Use project scope when the user says `project`, `repo`, `workspace`, or `current project`. Write to `<trusted-project>/.codex/agents/<role-name>.toml`. Use personal scope only when explicitly requested and write to `~/.codex/agents/<role-name>.toml`.
 
@@ -337,10 +338,10 @@ If the user combines a workflow with a Codex Goal, leave Goal lifecycle and limi
 
 ## One-time native setup
 
-Use this path for a current same-provider setup such as Sol root to Luna or Terra children. Claude Fable 5 and Claude Opus 5 are the built-in cross-provider Planner or Advisor exceptions because they run through the bundled read-only MCP bridge and the user's authenticated Claude Code CLI.
+Use this path for a current same-provider setup such as Sol root to Luna or Terra children. Claude Fable 5 and Claude Opus 5 are the built-in cross-provider Planner or Advisor exceptions, and Claude Sonnet 5 is the built-in cross-provider Reviewer exception, because they run through the bundled read-only MCP bridge and the user's authenticated Claude Code CLI.
 
 1. Identify the Codex binary used by the active host. Do not assume the shell `codex` is the Desktop binary.
-2. Resolve the exact executor and optional Planner, Advisor, and Designer IDs and efforts from that host.
+2. Resolve the exact executor and optional Planner, Advisor, Designer, and Reviewer routes and efforts from that host.
 3. Run the bundled native configurator from this skill's real directory with Python 3.11 or newer. Use `python3` on typical macOS/Linux hosts; on Windows select an available `py -3.11` or `python` launcher after checking its version. Never use a repository-relative copy from the user's workspace.
 4. Inspect the dry-run output. A literal `setup` request authorizes applying a clean, non-replacement personal policy after that preview.
 5. Start a new task after apply. The user chooses the orchestrator in the normal model picker and no longer needs to invoke this skill for ordinary work.
@@ -377,9 +378,18 @@ External Model role named `designer` for cross-provider design work so the root 
 validate its personal file and reject project shadowing immediately before the
 bounded call.
 
+Add `--reviewer-sonnet` for the persistent Claude Sonnet 5 Reviewer and optionally
+`--reviewer-effort low|medium|high|xhigh|max`; omission or `auto` defaults to
+`medium`. Reviewer omission persists `reviewer: none`. The saved Reviewer route is
+the default for future tasks; a current task may use the `review_code` tool's
+task-local `model` and `effort` overrides only when the model is one of the
+bridge-qualified Reviewer models and the effort is supported. The persisted route
+remains the fallback for omitted override fields, and the bridge must not persist
+task-local Reviewer overrides.
+
 The configurator capability-tests the complete four-field preset on the active target, `codex` on PATH when different, the known macOS Desktop binary when present, and every explicit `--compat-bin`. A successful isolated config probe means that client can parse the preset; it is not a live child-model confirmation. Report `route accepted` or `used and confirmed` only from the exact live spawn evidence defined below. Ask about other Codex/IDE installations that share this config only when the environment suggests they exist, and pass their binaries explicitly. If the request or active host indicates a named `--profile`, explain that normal setup manages the default user layer and is not verified for that profile; do not add a routine question for users with no profile signal. If a checked client rejects any managed field, stop before apply. Recommend updating it or using the task-local fallback. `--allow-incompatible-client` requires a separate explicit user decision because it can make the shared config unreadable to that client.
 
-For the current validated v2 direct route, set `tool_namespace = "agents"`. Live testing on Desktop `0.144.0-alpha.4` showed that the default reserved `collaboration.spawn_agent` schema rejected expanded model/effort metadata, while `agents` accepted the same request and spawned Luna at `xhigh`. Treat this as a required control-surface setting for that tested path, not as the executor selection. `usage_hint_text` carries the actual Planner, Advisor, Designer, and Executor routes.
+For the current validated v2 direct route, set `tool_namespace = "agents"`. Live testing on Desktop `0.144.0-alpha.4` showed that the default reserved `collaboration.spawn_agent` schema rejected expanded model/effort metadata, while `agents` accepted the same request and spawned Luna at `xhigh`. Treat this as a required control-surface setting for that tested path, not as the executor selection. `usage_hint_text` carries the actual Planner, Advisor, Designer, Executor, and Reviewer routes.
 
 Do not add `enabled = true` for a Sol or Terra root. Their current model metadata selects v2. The configurator intentionally manages these routing fields:
 
@@ -388,7 +398,7 @@ Do not add `enabled = true` for a Sol or Terra root. Their current model metadat
 - `features.multi_agent_v2.multi_agent_mode_hint_text`;
 - `features.multi_agent_v2.usage_hint_text`.
 
-When Claude Fable 5 or Claude Opus 5 is selected, it additionally manages only the plugin-scoped `enabled` override for the chosen bundled MCP launcher and any launcher variant already overridden by the user. The historical `fable-advisor-*` launcher IDs are retained as compatibility identifiers for both sealed models. All bundled variants are disabled by default. The original override values are stored and restored by `disable`. Codex's TOML editor may retain an inert empty table header after deleting the last override; never rewrite the file merely to remove that cosmetic header.
+When Claude Fable 5, Claude Opus 5, or Claude Sonnet 5 is selected, it additionally manages only the plugin-scoped `enabled` override for the chosen bundled MCP launcher and any launcher variant already overridden by the user. The historical `fable-advisor-*` launcher IDs are retained as compatibility identifiers for both sealed models. All bundled variants are disabled by default. The original override values are stored and restored by `disable`. Codex's TOML editor may retain an inert empty table header after deleting the last override; never rewrite the file merely to remove that cosmetic header.
 
 It uses Codex App Server's `config/read` and `config/batchWrite` APIs, not a home-grown TOML rewrite. It preserves unrelated settings and comments, validates the whole effective config, and uses the user-layer version to detect races. Restore snapshots cover the four routing fields plus the narrowly scoped MCP overrides only when either bundled Claude model is selected; the namespaced state also records schema/version markers, config path, selected seats, and scalar-conversion metadata when needed. If the user explicitly replaces existing hint text, the exact prior text is stored for restoration; warn them never to place credentials in routing hints.
 
@@ -408,7 +418,7 @@ python3 <skill-dir>/scripts/configure_native_routing.py \
   --status --require-effective
 ```
 
-Run status from the target project. The first form is descriptive. Use `--require-effective` for automation and release gates; it returns nonzero for incompatible clients, conflicts, overrides, incomplete controls, an unavailable bundled Claude or custom-agent route, or orphaned v0.4+ personal roles. Report the current task model as the orchestrator, Planner (`root` when omitted), configured Advisor, Designer, and Executor, whether the personal policy is installed and effective in that workspace, whether effective spawn controls are visible, whether the effective tool namespace is `agents`, the target config path, and checked-client compatibility. State that neither status form proves a live route or infers v2 activation for the model selected in a task; current Sol or Terra is the intended root.
+Run status from the target project. The first form is descriptive. Use `--require-effective` for automation and release gates; it returns nonzero for incompatible clients, conflicts, overrides, incomplete controls, an unavailable bundled Claude or custom-agent route, or orphaned v0.4+ personal roles. Report the current task model as the orchestrator, Planner (`root` when omitted), configured Advisor, Designer, Executor, and Reviewer, whether the personal policy is installed and effective in that workspace, whether effective spawn controls are visible, whether the effective tool namespace is `agents`, the target config path, and checked-client compatibility. State that neither status form proves a live route or infers v2 activation for the model selected in a task; current Sol or Terra is the intended root.
 
 When status reports `managed fields conflict with local restore state`, do not run
 setup or disable over the conflict and do not assume authentication failed. A literal
@@ -428,7 +438,7 @@ python3 <skill-dir>/scripts/configure_native_routing.py \
 
 Repair must require valid saved state and both live hints to retain the plugin
 ownership marker. It must refuse namespace, spawn-metadata, drift in the historical
-Fable launcher IDs shared by both bundled Claude models, scalar-shape,
+Fable launcher IDs shared by all bundled Claude models, scalar-shape,
 missing/unmarked hint, or other managed drift. It writes only the
 different mode/usage fields through App Server compare-and-swap, leaves the original
 restore snapshot and seat records byte-for-byte unchanged, checks user and effective
@@ -455,7 +465,7 @@ Disable must remain available even if an older client is incompatible with the a
 
 For personal v0.4 custom roles, preview and apply removal with `configure_orchestration.py --scope personal --personal-route-names --remove-saved-roles`. For older fixed-name personal roles, run a separate preview without `--personal-route-names`. Project removal uses `--scope project --root <trusted-project> --remove-saved-roles`. Delete only files that the configurator fully validates as managed; edited or user-owned files require manual review.
 
-## Claude Fable 5 or Claude Opus 5 Planner or Advisor
+## Claude Fable 5 / Opus 5 Planner or Advisor, and Sonnet 5 Reviewer
 
 Use this built-in route when the user names Claude Fable 5. Do not create a custom provider or custom-agent file for it.
 Claude Fable 5 remains a built-in cross-provider Planner or Advisor exception.
@@ -463,6 +473,11 @@ Claude Fable 5 remains a built-in cross-provider Planner or Advisor exception.
 Use the same sealed bridge when the user names Claude Opus 5. Its exact model
 ID is `claude-opus-5`, and Claude Code 2.1.219 or newer is required. In
 user-facing diagnostics use the exact name `Claude Opus 5`.
+
+Use the Reviewer side of the same sealed bridge when the user names Claude Sonnet 5.
+Its persisted exact model ID is `claude-sonnet-5`; the Reviewer operation is
+`review_code`, not a Planner/Advisor operation. In user-facing diagnostics use the
+exact name `Claude Sonnet 5`.
 
 In user-facing diagnostic status or operation results, use the exact name `Claude Fable 5`.
 The concise activation confirmation preserves the supplied `Fable 5` label when that is what the user wrote, as shown in its exact example.
@@ -474,7 +489,7 @@ Prerequisites:
 - `claude auth status --json` reports a first-party Pro, Max, or Team login;
 - a Python 3.11+ launcher is available.
 
-The plugin packages three disabled MCP launcher variants for macOS, Linux, and Windows. Setup enables exactly one compatible variant through the plugin's namespaced config when either bundled Claude model is selected. At planning or review time the MCP server gives authentication and model subprocesses only a minimal platform environment. It preserves `HOME` plus canonical operating-system `USER` and `LOGNAME` on POSIX, or `USERPROFILE` on Windows, for first-party login discovery. It does not trust ambient POSIX identity values and does not inherit credential, config-redirection, provider/model/effort, endpoint/gateway, proxy/CA/mTLS, or telemetry override families. It invokes `claude --print --model <sealed-model-id>` with `--safe-mode`, no tools, no session persistence, prompt suggestions disabled, and JSON output. Advisor review additionally requires Claude Code's `--json-schema` capability. Each saved seat pins its model and effort; the root cannot replace them through tool arguments.
+The plugin packages three disabled MCP launcher variants for macOS, Linux, and Windows. Setup enables exactly one compatible variant through the plugin's namespaced config when any bundled Claude model is selected. At planning or review time the MCP server gives authentication and model subprocesses only a minimal platform environment. It preserves `HOME` plus canonical operating-system `USER` and `LOGNAME` on POSIX, or `USERPROFILE` on Windows, for first-party login discovery. It does not trust ambient POSIX identity values and does not inherit credential, config-redirection, provider/model/effort, endpoint/gateway, proxy/CA/mTLS, or telemetry override families. It invokes `claude --print --model <sealed-model-id>` with `--safe-mode`, no tools, no session persistence, prompt suggestions disabled, and JSON output. Advisor and Reviewer review additionally require Claude Code's `--json-schema` capability. Planner/Advisor saved seats pin model and effort. Reviewer uses its persisted route by default, but `review_code` may accept task-local `model` and `effort` overrides only from the bridge-qualified Reviewer model and effort allowlists; those overrides affect one call and must not persist.
 
 Fable effort is configurable per setup. The default is `high`; supported Claude Code values are `low`, `medium`, `high`, `xhigh`, and `max`. Accept `ultra` as an alias for `max`, save the effective Claude Code value, and disclose the alias mapping in setup output. Existing saved `max` routes remain valid.
 
@@ -483,7 +498,14 @@ exactly `low`, `medium`, `high`, `xhigh`, and `max`; no alias is accepted.
 Setup requires only that the selected sealed effort appear in the installed
 CLI's advertised set. Extra advertised values do not expand the sealed set.
 
-The bridge exposes only bounded, read-only planning operations. `create_plan` accepts one self-contained packet and requires `PLAN_DRAFT`. `revise_plan` requires the task, canonical current plan, latest critique, and compact findings history, then requires `PLAN_REVISION` plus a findings ledger and revised plan. `review_plan` remains the Advisor operation and requires a locally revalidated JSON Schema object containing exactly `PLAN_APPROVED` or `PLAN_REVISE` plus a non-empty body; raw prose never counts as a decision. Every call uses the same full saved-state validator as native status/repair/disable, then requires runtime `modelUsage` to contain a reviewed Fable primary identity (`claude-fable-5` or `claude-opus-4-8`) or the exact Opus primary, plus only that model's explicit exact helper allowlist. Fable permits its independently observed `claude-haiku-4-5-20251001` helper. No Opus helper identity is independently established, so Opus currently permits only `claude-opus-5` and fails closed if any additional runtime model appears. Return every observed ID in `used_models`; an unknown additional or missing primary model makes the seat unavailable. Any auth, transport, state, format, or model-confirmation failure makes that seat unavailable; it never counts as approval. The bridge returns no account identifier or credential. Local mocked verification does not prove a positive live Opus invocation.
+Sonnet Reviewer effort defaults to `medium` and accepts exactly `low`, `medium`,
+`high`, `xhigh`, and `max`. Its persisted route is the fallback. Task-local
+`model` and `effort` overrides are accepted only by `review_code`; `model` must be
+one of the bridge-qualified Reviewer models, and an omitted override field falls
+back to the persisted Reviewer route. The bridge must not persist task-local
+Reviewer overrides.
+
+The bridge exposes only bounded, read-only root operations. `create_plan` accepts one self-contained packet and requires `PLAN_DRAFT`. `revise_plan` requires the task, canonical current plan, latest critique, and compact findings history, then requires `PLAN_REVISION` plus a findings ledger and revised plan. `review_plan` remains the Advisor operation and requires a locally revalidated JSON Schema object containing exactly `PLAN_APPROVED` or `PLAN_REVISE` plus a non-empty body; raw prose never counts as a decision. `review_code` accepts one self-contained implementation review packet and requires a locally revalidated structured result containing exactly `CODE_REVIEW_PASS` or `CODE_REVIEW_FINDINGS` plus a non-empty body. Every call uses the same full saved-state validator as native status/repair/disable, then requires runtime `modelUsage` to contain a reviewed Fable primary identity (`claude-fable-5` or `claude-opus-4-8`) or the exact Opus primary, plus only that model's explicit exact helper allowlist. Fable permits its independently observed `claude-haiku-4-5-20251001` helper. No Opus helper identity is independently established, so Opus currently permits only `claude-opus-5`. Sonnet requires its qualified Reviewer primary and permits only its explicitly qualified helper identity. Both fail closed if any additional unqualified runtime model appears. Return every observed ID in `used_models`; an unknown additional or missing primary model makes the seat unavailable. Any auth, transport, state, format, or model-confirmation failure makes that seat unavailable; it never counts as approval. The bridge returns no account identifier or credential. Local mocked verification does not prove a positive live Opus invocation.
 
 The configured Fable route remains `claude-fable-5`, while runtime `modelUsage`
 may confirm either reviewed Fable primary identity. This does not make
@@ -564,8 +586,10 @@ This skill and its saved policy must never:
 - weaken approvals or permissions;
 - create nested executor teams;
 - let a Planner or Advisor contact the other role directly;
-- let Designer contact Planner, Advisor, or Executor directly;
+- let Designer contact Planner, Advisor, Reviewer, or Executor directly;
+- let Reviewer contact Planner, Advisor, Designer, or Executor directly;
 - let an advisor direct executors;
+- let Reviewer edit files, execute implementation, or direct executors;
 - parallelize overlapping writes;
 - silently substitute the root model for an unavailable child route.
 
@@ -596,7 +620,7 @@ After spawning, use the tool result or client metadata to confirm the accepted r
 - `inherited root — requested child model was not used`;
 - `unavailable`: the requested route cannot run here;
 - `root`: no Planner route is configured, so the root plans;
-- `none`: no Advisor or Designer is configured for that seat.
+- `none`: no Advisor, Designer, or Reviewer is configured for that seat.
 
 Tool acceptance proves the requested route was valid and accepted, not necessarily that the client exposes post-start runtime identity. Child prose claiming a model name is not proof. If an exact route fails, report it to the root. An unavailable configured Planner or Advisor halts before Executor work unless the user explicitly made that seat best-effort for the current task; apply the bounded degradation rules below and disclose it. A configured Designer failure blocks work that explicitly requires its design handoff, but does not block unrelated Executor work; the root owns design when Designer was omitted. An unavailable Executor may leave work with the root only when the user did not require delegation or that Executor route. Never describe an unavailable route as successful.
 
@@ -666,6 +690,29 @@ Require it to preserve unrelated work, stay inside the slice, avoid the advisor,
 
 Parallelize only genuinely independent slices with non-overlapping write ownership. The root inspects, integrates, and verifies every handoff. Executor completion is never final acceptance.
 
+## Reviewer workflow
+
+Reviewer is optional and root-directed. When configured, it runs only after Executor
+work is integrated and the root has run the required verification. The root sends a
+fresh self-contained implementation review packet through `review_code` containing
+the approved requirements, implementation diff or equivalent bounded change set,
+and current verification results. Reviewer is read-only: it does not edit files,
+run implementation tools, spawn descendants, contact other roles, or direct Executor.
+
+Use at most two total Reviewer reviews. `CODE_REVIEW_PASS` ends the review loop
+immediately. `CODE_REVIEW_FINDINGS` returns material findings to the root for
+adjudication; only accepted findings go back to the configured Executor. After fixes,
+the root reruns the required verification before the second and final Reviewer call.
+If that second call still returns `CODE_REVIEW_FINDINGS`, halt without claiming
+Reviewer approval and return a non-approval artifact with the remaining findings,
+their dispositions, and the latest verification evidence. Never run a third review.
+
+The persisted Reviewer route is the default. For one task, `review_code` may receive
+task-local `model` and `effort` overrides. `model` must be one of the
+bridge-qualified Reviewer models and the effort must be supported for that route.
+If an override field is omitted, the persisted Reviewer route remains the fallback;
+the bridge must not persist task-local Reviewer overrides.
+
 ## Task-local and older-client fallback
 
 When the persistent policy is unavailable, apply the supplied seats only to the work in the same invocation. Do not claim that a mutable team was saved.
@@ -697,7 +744,7 @@ Never call that 65% fewer raw tokens, a guaranteed five-hour or weekly-limit sav
 ## Resources
 
 - `scripts/configure_native_routing.py`: one-time native setup, status, seat changes, and disable.
-- `scripts/fable_advisor_mcp.py`: fail-closed Fable 5 and Opus 5 planning and review bridge; the filename is retained for compatibility.
+- `scripts/fable_advisor_mcp.py`: fail-closed Fable 5 / Opus 5 planning bridge plus Sonnet 5 Reviewer `review_code` bridge; the filename is retained for compatibility.
 - `scripts/configure_orchestration.py`: namespaced custom agents, provider pins, safe removal, and legacy migration.
 - `scripts/inspect_models.py`: fallible host-catalog diagnostics.
 - `scripts/external_configurator.py`: preview-first External Model provider, Gate 0, role, status, recovery, and removal lifecycle.

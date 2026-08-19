@@ -1246,7 +1246,7 @@ class FableAdvisorMcpTests(unittest.TestCase):
         tools = listed["result"]["tools"]
         self.assertEqual(
             [tool["name"] for tool in tools],
-            ["create_plan", "revise_plan", "review_plan", "status"],
+            ["create_plan", "revise_plan", "review_plan", "review_code", "status"],
         )
         for tool in tools:
             annotations = tool["annotations"]
@@ -1261,6 +1261,7 @@ class FableAdvisorMcpTests(unittest.TestCase):
             ["task", "current_plan", "critique", "history"],
         )
         self.assertEqual(tools[2]["inputSchema"]["required"], ["packet"])
+        self.assertEqual(tools[3]["inputSchema"]["required"], ["packet"])
         for name in ("task", "current_plan", "critique", "history"):
             self.assertEqual(
                 tools[1]["inputSchema"]["properties"][name]["maxLength"],
@@ -1306,6 +1307,221 @@ class FableAdvisorMcpTests(unittest.TestCase):
             self.assertRaisesRegex(FABLE.AdvisorError, "state is invalid"),
         ):
             FABLE.status()
+
+    def test_status_reports_reviewer_only_schema_six_route(self) -> None:
+        reviewer = {
+            "kind": "claude_subscription",
+            "model": "claude-sonnet-5",
+            "effort": "medium",
+            "server": "fable-advisor-python3",
+        }
+        self.write_state(schema=6, reviewer=reviewer)
+
+        with (
+            mock.patch.dict(os.environ, {"CODEX_HOME": str(self.home)}),
+            mock.patch.object(
+                FABLE,
+                "check_claude_auth",
+                return_value={
+                    "auth_method": "claude.ai",
+                    "api_provider": "firstParty",
+                },
+            ),
+        ):
+            try:
+                payload = FABLE.status()
+            except FABLE.AdvisorError as exc:
+                self.fail(f"reviewer-only status must be supported: {exc}")
+
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["configured_seats"], ["reviewer"])
+        self.assertEqual(
+            payload["seats"],
+            {
+                "reviewer": {
+                    "model": "claude-sonnet-5",
+                    "effort": "medium",
+                }
+            },
+        )
+        self.assertNotIn("model", payload)
+        self.assertNotIn("effort", payload)
+
+    def test_review_code_accepts_task_local_overrides_without_persisting_them(self) -> None:
+        reviewer = {
+            "kind": "claude_subscription",
+            "model": "claude-sonnet-5",
+            "effort": "medium",
+            "server": "fable-advisor-python3",
+        }
+        self.write_state(schema=6, reviewer=reviewer)
+        state_path = self.home / FABLE.STATE_FILENAME
+        before = state_path.read_bytes()
+
+        calls: list[tuple[list[str], dict[str, object]]] = []
+
+        def fake_run(
+            command: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            calls.append((command, kwargs))
+            if command[-2:] == ["auth", "status"] or command[-3:] == [
+                "auth",
+                "status",
+                "--json",
+            ]:
+                return self.auth_result()
+            return self.model_result(
+                "ignored prose",
+                model_usage={"claude-sonnet-5": {"outputTokens": 12}},
+                structured_output={
+                    "signal": "CODE_REVIEW_PASS",
+                    "body": "No material findings.",
+                },
+            )
+
+        with (
+            mock.patch.dict(os.environ, {"CODEX_HOME": str(self.home)}),
+            mock.patch.object(
+                FABLE, "resolve_claude", return_value=Path("/fake/claude")
+            ),
+            mock.patch.object(FABLE.subprocess, "run", side_effect=fake_run),
+        ):
+            response = FABLE.handle_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 60,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "review_code",
+                        "arguments": {
+                            "packet": "bounded implementation review packet",
+                            "model": "claude-sonnet-5",
+                            "effort": "high",
+                        },
+                    },
+                }
+            )
+
+        self.assertEqual(response["id"], 60)
+        result = response["result"]
+        self.assertFalse(result["isError"], result["content"][0]["text"])
+
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual(payload["model"], "claude-sonnet-5")
+        self.assertEqual(payload["effort"], "high")
+        self.assertEqual(payload["decision"], "CODE_REVIEW_PASS")
+
+        review_command = calls[1][0]
+        self.assertEqual(
+            review_command[review_command.index("--model") + 1],
+            "claude-sonnet-5",
+        )
+        self.assertEqual(
+            review_command[review_command.index("--effort") + 1],
+            "high",
+        )
+        self.assertEqual(state_path.read_bytes(), before)
+
+        review_tool = next(
+            tool for tool in FABLE.tool_definitions() if tool["name"] == "review_code"
+        )
+        properties = review_tool["inputSchema"]["properties"]
+        self.assertEqual(set(properties), {"packet", "model", "effort"})
+        self.assertEqual(review_tool["inputSchema"]["required"], ["packet"])
+
+    def test_review_code_pins_sonnet_medium_and_structured_contract(self) -> None:
+        sonnet_model = "claude-sonnet-5"
+        structured = {
+            "signal": "CODE_REVIEW_PASS",
+            "body": "No material findings.",
+        }
+
+        with mock.patch.object(
+            FABLE,
+            "load_fable_route",
+            return_value={"model": sonnet_model, "effort": "medium"},
+        ):
+            result, calls = self.invoke_with_results(
+                FABLE.review_code,
+                "bounded implementation review packet",
+                model_response="ignored prose",
+                model_usage={sonnet_model: {"outputTokens": 12}},
+                structured_output=structured,
+            )
+
+        self.assertEqual(result["decision"], "CODE_REVIEW_PASS")
+        self.assertEqual(
+            result["review"],
+            "CODE_REVIEW_PASS\nNo material findings.",
+        )
+        self.assertEqual(result["model"], sonnet_model)
+        self.assertEqual(result["effort"], "medium")
+        self.assertEqual(result["used_models"], [sonnet_model])
+
+        command = calls[1][0]
+        self.assertEqual(
+            command[command.index("--model") + 1],
+            sonnet_model,
+        )
+        self.assertEqual(
+            command[command.index("--effort") + 1],
+            "medium",
+        )
+        self.assertEqual(command.count("--json-schema"), 1)
+        self.assertEqual(
+            json.loads(command[command.index("--json-schema") + 1]),
+            FABLE.CODE_REVIEW_SCHEMA,
+        )
+        self.assertEqual(
+            command[command.index("--system-prompt") + 1],
+            FABLE.REVIEWER_SYSTEM_PROMPT,
+        )
+        self.assertEqual(
+            command[command.index("--tools") + 1],
+            "",
+        )
+        self.assertIn("--no-session-persistence", command)
+
+    def test_review_code_tool_dispatches_exact_packet(self) -> None:
+        expected = {
+            "decision": "CODE_REVIEW_PASS",
+            "review": "CODE_REVIEW_PASS\nNo material findings.",
+            "model": "claude-sonnet-5",
+            "effort": "medium",
+            "auth_method": "claude.ai",
+            "used_models": ["claude-sonnet-5"],
+        }
+
+        with mock.patch.object(
+            FABLE,
+            "review_code",
+            return_value=expected,
+            create=True,
+        ) as review_code:
+            response = FABLE.handle_request(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 50,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "review_code",
+                        "arguments": {
+                            "packet": "bounded implementation review packet",
+                        },
+                    },
+                }
+            )
+
+        review_code.assert_called_once_with(
+            "bounded implementation review packet"
+        )
+
+        self.assertEqual(response["id"], 50)
+        result = response["result"]
+        self.assertFalse(result["isError"])
+
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual(payload, expected)
 
     def test_status_tool_and_argument_validation_fail_closed(self) -> None:
         with (

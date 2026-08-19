@@ -11,9 +11,9 @@ Only two lanes are accepted:
 
 1. A bundled, reviewed native provider manifest using HTTPS and the Responses API,
    plus command-backed authentication and provider-pinned personal custom agents.
-2. A bundled, reviewed first-party subscription CLI adapter. Claude Fable 5 is the
-   only adapter in this lane and retains its no-tools, no-session-persistence,
-   first-party-login, runtime-metadata bridge.
+2. A bundled, reviewed first-party subscription CLI adapter. Claude Fable 5, Claude Opus 5, and Claude Sonnet 5 use this lane and retain the no-tools/no-persistence,
+   first-party-login, mechanical runtime model metadata bridge. Fable and Opus are
+   sealed to Planner/Advisor operations; Claude Sonnet 5 is sealed to the Reviewer `review_code` operation.
 
 An arbitrary URL, model ID, effort, shell command, project-local helper, or generic
 subscription CLI is not a provider. Additions require code review, exact schemas,

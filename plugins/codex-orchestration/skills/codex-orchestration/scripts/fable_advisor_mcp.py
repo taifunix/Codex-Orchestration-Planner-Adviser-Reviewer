@@ -27,6 +27,9 @@ STATE_FILENAME = ".codex-orchestration-routing.json"
 MANAGED_MARKER = routing_state.MANAGED_MARKER
 FABLE_MODEL = routing_state.FABLE_MODEL
 OPUS_MODEL = routing_state.OPUS_MODEL
+SONNET_MODEL = "claude-sonnet-5"
+SONNET_EFFORTS = routing_state.SONNET_EFFORTS
+REVIEWER_MODELS = frozenset({SONNET_MODEL})
 FABLE_SERVERS = routing_state.FABLE_SERVERS
 SUPPORTED_EFFORTS = routing_state.FABLE_EFFORTS
 # Claude Code currently reports this exact internal helper alongside Fable for
@@ -39,6 +42,7 @@ REVIEWED_PRIMARY_MODELS_BY_ROUTE = {
     # The resolved Fable identity is not an alias for the separately sealed
     # Opus route. Opus remains primary-only until independently re-qualified.
     OPUS_MODEL: frozenset({OPUS_MODEL}),
+    SONNET_MODEL: frozenset({SONNET_MODEL}),
 }
 ALLOWED_RUNTIME_MODELS = frozenset(
     {*REVIEWED_PRIMARY_MODELS_BY_ROUTE[FABLE_MODEL], FABLE_HELPER_MODEL}
@@ -48,6 +52,9 @@ ALLOWED_RUNTIME_MODELS_BY_PRIMARY = {
     # No Opus helper identity has been independently verified. Fail closed if
     # Claude Code reports anything beyond the sealed primary.
     OPUS_MODEL: frozenset({OPUS_MODEL}),
+    # The local first-party Sonnet runtime was qualified with this exact Haiku
+    # helper identity. Any other helper remains fail-closed.
+    SONNET_MODEL: frozenset({SONNET_MODEL, FABLE_HELPER_MODEL}),
 }
 CLAUDE_TIMEOUT_SECONDS = 600
 AUTH_TIMEOUT_SECONDS = 20
@@ -59,6 +66,19 @@ PLAN_REVIEW_SCHEMA = {
         "signal": {
             "type": "string",
             "enum": ["PLAN_APPROVED", "PLAN_REVISE"],
+        },
+        "body": {"type": "string", "minLength": 1},
+    },
+    "required": ["signal", "body"],
+    "additionalProperties": False,
+}
+
+CODE_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "signal": {
+            "type": "string",
+            "enum": ["CODE_REVIEW_PASS", "CODE_REVIEW_FINDINGS"],
         },
         "body": {"type": "string", "minLength": 1},
     },
@@ -147,10 +167,15 @@ Provide the complete revised plan, clearly identifying its source plan version a
 
 Both sections must be non-empty. Your first non-empty line must be exactly PLAN_REVISION. The root orchestrator, not you, validates finding coverage and plan-version semantics. Report only to the root orchestrator."""
 
+REVIEWER_SYSTEM_PROMPT = """You are Claude Sonnet 5 acting only as the code Reviewer for Codex's root orchestrator.
+Review the supplied self-contained implementation packet for material correctness, regressions, security issues, violated requirements, unsafe behavior, missing verification, and implementation defects. Do not edit files, call tools, spawn agents, browse, contact other roles, or attempt implementation.
+
+Return only the required structured fields `signal` and `body`. Use CODE_REVIEW_PASS only when no material finding remains. Use CODE_REVIEW_FINDINGS when correction is required. For findings, assign stable IDs such as R-1, R-2, state severity, identify the affected file or component when the packet supports it, and give a concrete correction or verification requirement. Ignore cosmetic style preferences. Report only to the root orchestrator."""
+
 # Backward-compatible public constant for existing importers.
 SYSTEM_PROMPT = ADVISOR_SYSTEM_PROMPT
 
-Seat = Literal["planner", "advisor"]
+Seat = Literal["planner", "advisor", "reviewer"]
 
 
 class AdvisorError(RuntimeError):
@@ -307,8 +332,10 @@ def _read_routing_state(home: Path | None = None) -> dict[str, Any]:
 
 
 def _validate_seat(seat: str) -> Seat:
-    if seat not in {"planner", "advisor"}:
-        raise AdvisorError("Claude planning seat must be `planner` or `advisor`.")
+    if seat not in {"planner", "advisor", "reviewer"}:
+        raise AdvisorError(
+            "Claude subscription seat must be `planner`, `advisor`, or `reviewer`."
+        )
     return seat  # type: ignore[return-value]
 
 
@@ -361,10 +388,17 @@ def _validate_runtime_models(
     reviewed_primaries = REVIEWED_PRIMARY_MODELS_BY_ROUTE.get(primary_model)
     if allowed_models is None or reviewed_primaries is None:
         raise AdvisorError("The configured Claude primary model is not sealed.")
-    policy_label = "Fable" if primary_model == FABLE_MODEL else "Claude"
-    primary_label = (
-        "Claude Fable 5" if primary_model == FABLE_MODEL else "Claude Opus 5"
-    )
+    if primary_model == FABLE_MODEL:
+        policy_label = "Fable"
+        primary_label = "Claude Fable 5"
+    elif primary_model == OPUS_MODEL:
+        policy_label = "Claude"
+        primary_label = "Claude Opus 5"
+    elif primary_model == SONNET_MODEL:
+        policy_label = "Claude"
+        primary_label = "Claude Sonnet 5"
+    else:
+        raise AdvisorError("The configured Claude primary model is not sealed.")
     if not isinstance(usage, dict):
         raise AdvisorError("Runtime metadata has a malformed modelUsage mapping.")
     raw_models = list(usage)
@@ -461,6 +495,72 @@ def _validate_review_output(value: Any, *, display_name: str) -> dict[str, str]:
     return {"signal": signal, "body": body.strip()}
 
 
+def _validate_code_review_output(
+    value: Any, *, display_name: str
+) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != set(CODE_REVIEW_SCHEMA["required"]):
+        raise AdvisorError(
+            f"{display_name} code review returned invalid structured output."
+        )
+    signal = value.get("signal")
+    body = value.get("body")
+    if (
+        not isinstance(signal, str)
+        or signal not in {"CODE_REVIEW_PASS", "CODE_REVIEW_FINDINGS"}
+        or not isinstance(body, str)
+        or not body.strip()
+    ):
+        raise AdvisorError(
+            f"{display_name} code review returned invalid structured output."
+        )
+    return {"signal": signal, "body": body.strip()}
+
+
+def _code_review_response(
+    payload: dict[str, Any], *, display_name: str
+) -> tuple[str, str]:
+    structured_present = "structured_output" in payload
+    result_present = "result" in payload
+    structured = (
+        _validate_code_review_output(
+            payload.get("structured_output"),
+            display_name=display_name,
+        )
+        if structured_present
+        else None
+    )
+    legacy: dict[str, str] | None = None
+    if result_present:
+        raw_result = payload.get("result")
+        if not isinstance(raw_result, str):
+            raise AdvisorError(
+                f"{display_name} code review returned invalid structured output."
+            )
+        try:
+            decoded_result = json.loads(raw_result)
+        except json.JSONDecodeError:
+            if structured is None:
+                raise AdvisorError(
+                    f"{display_name} code review returned invalid structured output."
+                )
+        else:
+            legacy = _validate_code_review_output(
+                decoded_result,
+                display_name=display_name,
+            )
+    if structured is None and legacy is None:
+        raise AdvisorError(
+            f"{display_name} code review returned invalid structured output."
+        )
+    if structured is not None and legacy is not None and structured != legacy:
+        raise AdvisorError(
+            f"{display_name} code review returned conflicting structured output."
+        )
+    selected = structured or legacy
+    assert selected is not None
+    return selected["signal"], f"{selected['signal']}\n{selected['body']}"
+
+
 def _review_response(payload: dict[str, Any], *, display_name: str) -> tuple[str, str]:
     structured_present = "structured_output" in payload
     result_present = "result" in payload
@@ -511,13 +611,31 @@ def _invoke_fable(
     prompt: str,
     system_prompt: str,
     allowed_signals: set[str],
+    model_override: str | None = None,
+    effort_override: str | None = None,
 ) -> tuple[str, str, dict[str, str], dict[str, str], list[str]]:
     """Run one stateless, seat-authorized, no-tools Claude operation."""
 
     route = load_fable_route(seat=seat)
-    display_name = (
-        "Claude Fable 5" if route["model"] == FABLE_MODEL else "Claude Opus 5"
-    )
+    if model_override is not None or effort_override is not None:
+        if seat != "reviewer":
+            raise AdvisorError("Task-local Claude overrides are Reviewer-only.")
+        if model_override is not None:
+            if not isinstance(model_override, str) or model_override not in REVIEWER_MODELS:
+                raise AdvisorError("Reviewer model override is not qualified.")
+            route["model"] = model_override
+        if effort_override is not None:
+            if not isinstance(effort_override, str) or effort_override not in SONNET_EFFORTS:
+                raise AdvisorError("Reviewer effort override is unsupported.")
+            route["effort"] = effort_override
+    if route["model"] == FABLE_MODEL:
+        display_name = "Claude Fable 5"
+    elif route["model"] == OPUS_MODEL:
+        display_name = "Claude Opus 5"
+    elif route["model"] == SONNET_MODEL:
+        display_name = "Claude Sonnet 5"
+    else:
+        raise AdvisorError("The configured Claude primary model is not sealed.")
     claude = resolve_claude()
     auth = check_claude_auth(claude)
     command = [
@@ -540,12 +658,18 @@ def _invoke_fable(
         "--system-prompt",
         system_prompt,
     ]
+    structured_schema = None
     if operation == "plan review":
+        structured_schema = PLAN_REVIEW_SCHEMA
+    elif operation == "code review":
+        structured_schema = CODE_REVIEW_SCHEMA
+
+    if structured_schema is not None:
         command.extend(
             (
                 "--json-schema",
                 json.dumps(
-                    PLAN_REVIEW_SCHEMA,
+                    structured_schema,
                     separators=(",", ":"),
                     sort_keys=True,
                 ),
@@ -584,6 +708,8 @@ def _invoke_fable(
     used_models = _validate_runtime_models(payload.get("modelUsage"), route["model"])
     if operation == "plan review":
         signal, response = _review_response(payload, display_name=display_name)
+    elif operation == "code review":
+        signal, response = _code_review_response(payload, display_name=display_name)
     else:
         if "structured_output" in payload or not isinstance(
             payload.get("result"), str
@@ -597,6 +723,10 @@ def _invoke_fable(
         if operation == "plan review":
             raise AdvisorError(
                 f"{display_name} returned an invalid structured plan decision."
+            )
+        if operation == "code review":
+            raise AdvisorError(
+                f"{display_name} returned an invalid structured code review decision."
             )
         expected = " or ".join(sorted(allowed_signals))
         raise AdvisorError(
@@ -710,12 +840,34 @@ def review_plan(packet: str) -> dict[str, Any]:
     }
 
 
+def review_code(
+    packet: str,
+    model: str | None = None,
+    effort: str | None = None,
+) -> dict[str, Any]:
+    values = _validate_inputs("code review", packet=packet)
+    signal, response, route, auth, used_models = _invoke_fable(
+        operation="code review",
+        seat="reviewer",
+        prompt=values["packet"],
+        system_prompt=REVIEWER_SYSTEM_PROMPT,
+        allowed_signals={"CODE_REVIEW_PASS", "CODE_REVIEW_FINDINGS"},
+        model_override=model,
+        effort_override=effort,
+    )
+    return {
+        "decision": signal,
+        "review": response,
+        **_base_result(route=route, auth=auth, used_models=used_models),
+    }
+
+
 def _configured_fable_seats() -> dict[str, dict[str, str]]:
     """Return configured bundled Claude seats (legacy public name)."""
 
     payload = _read_routing_state()
     routes: dict[str, dict[str, str]] = {}
-    for seat in ("planner", "advisor"):
+    for seat in ("planner", "advisor", "reviewer"):
         value = payload.get(seat)
         if value is None:
             continue
@@ -726,7 +878,7 @@ def _configured_fable_seats() -> dict[str, dict[str, str]]:
         routes[seat] = _validate_fable_route(value, seat=_validate_seat(seat))
     if not routes:
         raise AdvisorError(
-            "No bundled Claude model is configured for Planner or Advisor."
+            "No bundled Claude model is configured for Planner, Advisor, or Reviewer."
         )
     return routes
 
@@ -801,6 +953,45 @@ def tool_definitions() -> list[dict[str, Any]]:
             "annotations": annotations,
         },
         {
+            "name": "review_code",
+            "title": "Review implementation with the configured Claude Reviewer",
+            "description": (
+                "Review one self-contained implementation packet "
+                "with the configured Claude Reviewer."
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "packet": {
+                        **string_property,
+                        "description": (
+                            "Complete implementation review packet "
+                            "including requirements, diff, and verification results."
+                        ),
+                    },
+                    "model": {
+                        "type": "string",
+                        "enum": sorted(REVIEWER_MODELS),
+                        "description": (
+                            "Optional qualified task-local Reviewer model override. "
+                            "Omit to use the persisted Reviewer model."
+                        ),
+                    },
+                    "effort": {
+                        "type": "string",
+                        "enum": sorted(SONNET_EFFORTS),
+                        "description": (
+                            "Optional task-local Reviewer effort override. "
+                            "Omit to use the persisted Reviewer effort."
+                        ),
+                    },
+                },
+                "required": ["packet"],
+                "additionalProperties": False,
+            },
+            "annotations": annotations,
+        },
+        {
             "name": "status",
             "title": "Check bundled Claude Planner and Advisor status",
             "description": "Check configured Claude seats and first-party login without a model call.",
@@ -867,6 +1058,18 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             elif name == "review_plan":
                 args = _tool_arguments(arguments, {"packet"})
                 result = _tool_result(review_plan(args.get("packet")))
+            elif name == "review_code":
+                args = _tool_arguments(arguments, {"packet", "model", "effort"})
+                if "model" in args or "effort" in args:
+                    result = _tool_result(
+                        review_code(
+                            args.get("packet"),
+                            model=args.get("model"),
+                            effort=args.get("effort"),
+                        )
+                    )
+                else:
+                    result = _tool_result(review_code(args.get("packet")))
             elif name == "status":
                 _tool_arguments(arguments, set())
                 result = _tool_result(status())

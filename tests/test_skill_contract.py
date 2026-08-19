@@ -38,6 +38,42 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("No Opus helper identity is independently established", SKILL)
         self.assertIn("more than one bundled Claude subscription seat", SKILL)
 
+    def test_sonnet_reviewer_contract_is_documented_end_to_end(self) -> None:
+        for expected in (
+            "setup reviewer: Claude Sonnet 5 Medium",
+            "`reviewer:` configures only Reviewer",
+            "omitted reviewer means `reviewer: none`",
+            "--reviewer-sonnet",
+            "--reviewer-effort",
+            "`review_code`",
+            "at most two total Reviewer reviews",
+            "`CODE_REVIEW_PASS`",
+            "`CODE_REVIEW_FINDINGS`",
+            "task-local `model` and `effort` overrides",
+            "bridge-qualified Reviewer models",
+            "must not persist task-local Reviewer overrides",
+        ):
+            self.assertIn(expected, SKILL)
+
+        for expected in (
+            "Claude Sonnet 5 MCP Reviewer route",
+            "`review_code`",
+            "after Executor integration and verification",
+            "at most two total Reviewer reviews",
+            "task-local `model` and `effort` overrides",
+            "persisted Reviewer route remains the fallback",
+            "schema 6",
+        ):
+            self.assertIn(expected, REFERENCE)
+
+        for expected in (
+            "Claude Fable 5, Claude Opus 5, and Claude Sonnet 5",
+            "Claude Sonnet 5 is sealed to the Reviewer `review_code` operation",
+            "no-tools/no-persistence",
+            "mechanical runtime model metadata",
+        ):
+            self.assertIn(expected, EXTERNAL_REFERENCE)
+
     def test_public_controls_are_simple_and_setup_is_persistent(self) -> None:
         self.assertIn("setup executor: GPT-5.6 Luna Extra High", SKILL)
         self.assertIn("setup planner: Claude Fable 5 High", SKILL)
