@@ -621,6 +621,27 @@ class FableAdvisorMcpTests(unittest.TestCase):
                     )
                 self.assertNotIn(secret, str(failure.exception))
 
+    def test_runtime_model_usage_accepts_current_first_party_identity_metadata(self) -> None:
+        usage = {
+            FABLE.SONNET_MODEL: {
+                "inputTokens": 2,
+                "outputTokens": 491,
+                "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 1106,
+                "webSearchRequests": 0,
+                "costUSD": 0.014006999999999999,
+                "contextWindow": 1000000,
+                "maxOutputTokens": 64000,
+                "canonicalModel": FABLE.SONNET_MODEL,
+                "provider": "firstParty",
+            }
+        }
+
+        self.assertEqual(
+            FABLE._validate_runtime_models(usage, FABLE.SONNET_MODEL),
+            [FABLE.SONNET_MODEL],
+        )
+
     def test_runtime_model_usage_values_fail_closed(self) -> None:
         malformed_values = (
             None,
