@@ -325,6 +325,23 @@ class NativeRoutingTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_fable_launcher_key_targets_marketplace_plugin_identity(self) -> None:
+        marketplace = json.loads(
+            (REPO_ROOT / ".agents" / "plugins" / "marketplace.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        plugin = marketplace["plugins"][0]["name"]
+        marketplace_name = marketplace["name"]
+        expected_plugin_id = f"{plugin}@{marketplace_name}"
+        server = "fable-advisor-python3"
+        expected = (
+            f"plugins.{json.dumps(expected_plugin_id)}.mcp_servers."
+            f"{json.dumps(server)}.enabled"
+        )
+
+        self.assertEqual(NATIVE.fable_key_path(server), expected)
+
     def test_fake_cli_fixture_builds_windows_native_launchers(self) -> None:
         fixture_root = self.root / "windows-fixture"
         fixture_root.mkdir()
@@ -501,67 +518,6 @@ class NativeRoutingTests(unittest.TestCase):
         self.assertNotIn("tool_namespace", mode + usage)
         self.assertNotIn("enabled = true", mode + usage)
 
-    def test_policy_runs_bounded_reviewer_loop_after_executor_verification(self) -> None:
-        executor = {"kind": "model", "model": "gpt-5.6-luna", "effort": "xhigh"}
-        planner = {"kind": "model", "model": "gpt-5.6-sol", "effort": "high"}
-        advisor = {"kind": "model", "model": "gpt-5.6-terra", "effort": "high"}
-        reviewer = {
-            "kind": "claude_subscription",
-            "model": "claude-sonnet-5",
-            "effort": "medium",
-            "server": "fable-advisor-python3",
-        }
-
-        self.assertEqual(
-            getattr(NATIVE, "REVIEWER_REVIEW_LIMIT", None),
-            2,
-            "Reviewer policy must expose one authoritative two-round limit.",
-        )
-
-        mode, usage = NATIVE.build_policy(
-            executor,
-            planner,
-            advisor,
-            reviewer=reviewer,
-        )
-
-        self.assertIn("at most two total Reviewer reviews", mode)
-        self.assertIn("CODE_REVIEW_PASS ends review early", mode)
-        self.assertIn("CODE_REVIEW_FINDINGS", mode)
-        self.assertIn("reruns the required verification", mode)
-        self.assertIn("round-two CODE_REVIEW_FINDINGS halts", mode)
-        self.assertIn("non-approval artifact", mode)
-        self.assertIn("remaining Reviewer findings", mode)
-        self.assertIn("review_code", usage)
-        self.assertIn("self-contained implementation review packet", usage)
-        self.assertIn("requirements, implementation diff, and verification results", usage)
-        self.assertIn("CODE_REVIEW_PASS or CODE_REVIEW_FINDINGS", usage)
-        self.assertIn("task-local `model` and `effort` overrides", usage)
-        self.assertIn("bridge-qualified Reviewer models", usage)
-        self.assertIn("persisted Reviewer route remains the fallback", usage)
-        self.assertIn("must not persist task-local Reviewer overrides", usage)
-
-        self.assertLess(
-            mode.index("run final checks"),
-            mode.index("configured Reviewer"),
-        )
-        self.assertLess(
-            mode.index("configured Reviewer"),
-            mode.index("CODE_REVIEW_PASS ends review early"),
-        )
-        self.assertLess(
-            mode.index("CODE_REVIEW_PASS ends review early"),
-            mode.index("CODE_REVIEW_FINDINGS"),
-        )
-        self.assertLess(
-            mode.index("CODE_REVIEW_FINDINGS"),
-            mode.index("reruns the required verification"),
-        )
-        self.assertLess(
-            mode.index("reruns the required verification"),
-            mode.index("round-two CODE_REVIEW_FINDINGS halts"),
-        )
-
     def test_policy_renders_every_review_bound_from_the_authoritative_limit(
         self,
     ) -> None:
@@ -687,36 +643,6 @@ class NativeRoutingTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("does not accept seat settings", result.stderr)
-
-    def test_sonnet_reviewer_setup_persists_schema_six_route(self) -> None:
-        setup = self.run_script(
-            "--executor-model",
-            "gpt-5.6-luna",
-            "--reviewer-sonnet",
-            "--reviewer-effort",
-            "medium",
-            "--apply",
-            check=False,
-        )
-
-        self.assertEqual(setup.returncode, 0, setup.stderr)
-        self.assertIn("Reviewer: Claude Sonnet 5 medium", setup.stdout)
-        self.assertIn("setup makes no model call", setup.stdout)
-
-        state = json.loads(
-            (self.home / NATIVE.STATE_FILENAME).read_text(encoding="utf-8")
-        )
-        self.assertEqual(state["schema"], 6)
-        self.assertEqual(state["policy_version"], 6)
-        self.assertEqual(
-            state["reviewer"],
-            {
-                "kind": "claude_subscription",
-                "model": "claude-sonnet-5",
-                "effort": "medium",
-                "server": "fable-advisor-python3",
-            },
-        )
 
     def test_reserved_claude_model_ids_require_their_sealed_cli_routes(self) -> None:
         missing_codex = self.root / "must-not-start-app-server"

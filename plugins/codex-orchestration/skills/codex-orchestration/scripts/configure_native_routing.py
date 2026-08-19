@@ -51,7 +51,7 @@ ADVISOR_REVIEW_LIMIT = 8
 REVIEWER_REVIEW_LIMIT = 2
 STATE_FILENAME = ".codex-orchestration-routing.json"
 PROBE_VALUE = "CODEX_ORCHESTRATION_CAPABILITY_PROBE"
-PLUGIN_ID = "codex-orchestration@codex-orchestration"
+PLUGIN_ID = "codex-orchestration@codex-orchestration-reviewer"
 FABLE_DEFAULT_EFFORT = "high"
 FABLE_EFFORT_CHOICES = ("low", "medium", "high", "xhigh", "max")
 FABLE_EFFORT_ALIASES = {"ultra": "max"}
@@ -1336,12 +1336,7 @@ Planner and Advisor are policy-isolated, root-directed seats: they cannot contac
             "review packet containing requirements, implementation diff, and "
             "verification results. This is a read-only root tool call after Executor "
             "integration and verification. Require CODE_REVIEW_PASS or "
-            "CODE_REVIEW_FINDINGS. The task-local `model` and `effort` overrides are "
-            "allowed only through `review_code`; `model` must be one of the "
-            "bridge-qualified Reviewer models and `effort` must be supported by that "
-            "model. If either override is omitted, the persisted Reviewer route remains "
-            "the fallback for that field. The bridge must not persist task-local "
-            "Reviewer overrides."
+            "CODE_REVIEW_FINDINGS."
         )
     else:
         reviewer_hint = "No Reviewer route is configured."
