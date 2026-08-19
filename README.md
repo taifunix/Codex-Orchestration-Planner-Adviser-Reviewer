@@ -1,358 +1,448 @@
-# Codex Orchestration
+# Codex Orchestration — Planner / Advisor / Reviewer
 
-Bring models like Claude Fable 5 and Claude Opus 5 into Codex, give each model a role, and let Codex coordinate the work.
+Bring specialized models into a Codex workflow, give each model a bounded role, and keep the current Codex task model in charge from planning through implementation review.
 
-## What is it?
+This repository is a derivative of [Cjbuilds/Codex-Orchestration](https://github.com/Cjbuilds/Codex-Orchestration). It keeps the upstream Planner, Advisor, Designer, Executor, External Model, routing, repair, and safety machinery, and adds a first-class **Reviewer** route backed by **Claude Sonnet 5** through the existing hardened Claude Code MCP bridge.
 
-Codex Orchestration adds four simple roles to a Codex task:
+## What this fork adds
 
-- **Planner** creates the plan and improves it after feedback. It is optional; when omitted, your current Codex model plans.
-- **Advisor** reviews the plan, finds important gaps, and approves it when it is ready. It is optional.
-- **Designer** turns approved requirements into a bounded visual, UX, interaction, information-architecture, or design-system handoff. It is optional.
-- **Executor** implements the approved plan. It is required for setup.
+The main addition is a post-implementation Reviewer stage:
 
-The model selected for the Codex task remains in charge. It passes work between the roles, checks every result, and gives you the final answer.
+- **Reviewer** runs only after Executor integration and required verification.
+- The bundled Reviewer route uses **Claude Sonnet 5** through the official Claude Code CLI and a compatible first-party Claude login.
+- The persisted Reviewer default is **Claude Sonnet 5 / Medium**.
+- `review_code` returns one of two structured decisions:
+  - `CODE_REVIEW_PASS`
+  - `CODE_REVIEW_FINDINGS`
+- Findings are adjudicated by the root Codex model before any fix is accepted.
+- Accepted findings go back to Executor, verification is rerun, and Reviewer may review the fresh result once more.
+- The workflow allows **at most two total Reviewer reviews**.
+- A second material `CODE_REVIEW_FINDINGS` result halts with a non-approval artifact. There is no silent third review and no false "done".
+- A single `review_code` call may supply task-local `model` and `effort` overrides. They must be bridge-qualified/supported and **must not persist task-local Reviewer overrides** into routing state.
+- Omitted task-local override fields fall back to the persisted Reviewer route.
 
-## How it works
+Future Sonnet versions are not accepted merely because their names look compatible. A new model must be reviewed, qualified, allowlisted, and mechanically attested by runtime metadata before the bridge will use it.
+
+## Roles
+
+Codex Orchestration gives a task several explicit roles:
+
+- **Planner** creates and revises the plan. It is optional; when omitted, the current Codex model plans.
+- **Advisor** reviews the plan and either approves it or returns actionable planning findings. It is optional.
+- **Designer** creates a bounded design handoff when the task needs one. It is optional.
+- **Executor** implements the approved work. It is required for persistent setup.
+- **Reviewer** performs read-only implementation review after integration and verification. It is optional.
+
+The model selected for the Codex task remains the **root orchestrator and final authority**. Planner, Advisor, Designer, Executor, and Reviewer do not take ownership of the task away from Codex.
+
+## Workflow
 
 ```text
-                         YOUR TASK
-                             |
-                             v
-                  CODEX COORDINATES THE WORK
-                             |
-                             v
-               PLANNER CREATES THE FIRST PLAN
-              Fable 5, another model, or Codex
-                             |
-                             v
-                    ADVISOR REVIEWS IT
-                       finds real gaps
-                             |
-                   needs work? -- yes --+
-                             |            |
-                            no            v
-                             |      PLANNER IMPROVES IT
-                             |            |
-                             +<-----------+
-                             |
-                       PLAN APPROVED
-                             |
-                             v
-                DESIGNER SHAPES THE EXPERIENCE
-                    optional design handoff
-                             |
-                             v
-                  EXECUTORS IMPLEMENT IT
-                             |
-                             v
-                    CODEX TESTS & DELIVERS
+                           YOUR TASK
+                               |
+                               v
+                    CODEX COORDINATES WORK
+                               |
+                               v
+                     PLANNER CREATES PLAN
+                      optional / root may plan
+                               |
+                               v
+                       ADVISOR REVIEWS
+                               |
+                   PLAN_REVISE? ---- yes ----+
+                               |              |
+                              no              v
+                               |       PLANNER REVISES
+                               |              |
+                               +<-------------+
+                               |
+                         PLAN APPROVED
+                               |
+                               v
+                       DESIGNER HANDOFF
+                            optional
+                               |
+                               v
+                     EXECUTOR IMPLEMENTS
+                               |
+                               v
+                      TESTS / VERIFICATION
+                               |
+                               v
+                     REVIEWER REVIEWS CODE
+                       Claude Sonnet 5
+                               |
+                 +-------------+-------------+
+                 |                           |
+          CODE_REVIEW_PASS           CODE_REVIEW_FINDINGS
+                 |                           |
+                 v                           v
+              DELIVER             ROOT ADJUDICATES FINDINGS
+                                             |
+                                             v
+                                      EXECUTOR FIXES
+                                             |
+                                             v
+                                      TESTS RERUN
+                                             |
+                                             v
+                                    FINAL REVIEWER PASS
+                                             |
+                          +------------------+------------------+
+                          |                                     |
+                   CODE_REVIEW_PASS                    MATERIAL FINDINGS
+                          |                                     |
+                          v                                     v
+                       DELIVER                         HALT NON-APPROVED
 ```
 
-Planner and Advisor can work through several revisions. Codex stops as soon as the Advisor returns `PLAN_APPROVED`, with a safety limit of eight reviews. If approval is not reached, execution stops and Codex shows you the latest plan and unresolved issues.
+Planner and Advisor may iterate until the plan is ready. Codex stops as soon as Advisor returns `PLAN_APPROVED`, with a **safety limit of eight reviews**. If plan approval is not reached within that bound, execution stops and Codex reports the latest plan and unresolved findings.
+
+Reviewer uses a separate, tighter bound: **at most two total Reviewer reviews** after implementation. Reviewer failure or unavailability is never interpreted as approval.
 
 ## Why use it?
 
-- Bring Fable 5, Opus 5, or another compatible model into Codex.
-- Use different models for planning, review, design, and implementation.
-- Get a stronger plan before code changes begin.
-- Run independent implementation work in parallel—up to 2x faster on suitable tasks.
-- Move repeatable work away from the root model and potentially hit premium-model limits about 40% less often.
+- Keep one Codex model in charge while delegating bounded specialist work.
+- Use different models for planning, plan review, design, implementation, and code review.
+- Bring **Claude Fable 5**, Claude Opus 5, and Claude Sonnet 5 into supported subscription-backed roles without putting Anthropic API keys into Codex.
+- Get independent plan review before code changes begin.
+- Add an independent implementation review gate after tests.
+- Keep review findings structured and root-adjudicated rather than allowing one model to rewrite another model's work directly.
+- Preserve fail-closed routing and exact runtime model identity checks.
+- Run suitable Executor work in parallel while keeping integration and verification under Codex control.
 
-Results depend on the models, task, context, retries, and available parallel work. The speed and limit figures are targets, not guarantees.
+Results depend on the models, task, context, available parallel work, retries, and local tooling. Model use is not a guarantee of correctness; tests and root adjudication remain part of the workflow.
 
-## Install
+## Requirements
+
+- Codex with plugin support.
+- Python 3.11 or newer.
+- For bundled Claude subscription routes: the official Claude Code CLI and a compatible first-party Claude login.
+- For Claude Opus 5, retain the upstream Claude Code minimum documented by the project.
+- For External Model providers such as OpenRouter, follow the provider-specific secure enrollment and qualification flow documented under `references/`.
+
+The bundled Claude routes use first-party Claude authentication through the official CLI. They do **not** require you to paste an Anthropic API key into Codex.
+
+## Install this fork
+
+Add this repository as a Codex plugin marketplace and install the existing plugin package:
 
 ```bash
-codex plugin marketplace add Cjbuilds/Codex-Orchestration
+codex plugin marketplace add taifunix/Codex-Orchestration-Planner-Adviser-Reviewer
 codex plugin add codex-orchestration@codex-orchestration
 ```
 
-Start a new Codex task after installation. Setup requires Python 3.11 or newer.
+Then fully restart Codex Desktop and start a new task.
+
+Setup prompts use the literal skill label:
+
+```text
+$codex-orchestration:codex-orchestration
+```
+
+These are prompts for Codex chat, not shell commands.
 
 ## Quick start
 
-Start an ordinary Codex prompt with the literal skill label
-`$codex-orchestration:codex-orchestration`. These examples are prompts for Codex,
-not terminal commands. You can also browse installed skills with Codex's built-in
-`/skills` discovery.
-
-Use Fable 5 to plan, Sol to advise, and Luna to implement:
+A simple setup with the new Reviewer route:
 
 ```text
-$codex-orchestration:codex-orchestration setup planner: Claude Fable 5 High, advisor: GPT-5.6 Sol High, executor: GPT-5.6 Luna Extra High
+$codex-orchestration:codex-orchestration setup reviewer: Claude Sonnet 5 Medium, executor: GPT-5.6 Luna Extra High
 ```
 
-Add a dedicated Designer when the work needs a design handoff:
+A fuller native workflow with GPT planning/review and Claude Sonnet implementation review:
 
 ```text
-$codex-orchestration:codex-orchestration setup planner: Claude Fable 5 High, advisor: GPT-5.6 Sol High, designer: GPT-5.6 Terra High, executor: GPT-5.6 Luna Extra High
+$codex-orchestration:codex-orchestration setup planner: GPT-5.6 Sol High, advisor: GPT-5.6 Terra Medium, executor: GPT-5.6 Luna High, reviewer: Claude Sonnet 5 Medium
 ```
 
-Or let your current Codex model plan and use Fable 5 only as Advisor:
+After setup completes, fully restart Codex Desktop if instructed, start a new task, and use Codex normally. The saved routing policy applies automatically.
+
+Check the installed state with:
 
 ```text
-$codex-orchestration:codex-orchestration setup advisor: Claude Fable 5 High, executor: GPT-5.6 Luna Extra High
+$codex-orchestration:codex-orchestration status
 ```
 
-Or use Claude Opus 5 as the Advisor:
+Repair only plugin-owned routing drift with:
 
 ```text
-$codex-orchestration:codex-orchestration setup advisor: Claude Opus 5 XHigh, executor: GPT-5.6 Luna Extra High
+$codex-orchestration:codex-orchestration repair
 ```
 
-After setup, start another new task and use Codex normally. The saved workflow applies automatically.
+Disable the saved routing policy with:
 
-Fable defaults to **High**. You can choose **Low**, **Medium**, **High**, **XHigh**, or **Max**. **Ultra** is accepted as an alias for Max because Claude Code does not expose a separate Ultra effort.
-
-Opus 5 also defaults to **High** and supports the same five exact effort values,
-but not the Fable-only **Ultra** alias. Opus requires Claude Code **2.1.219 or
-newer**.
-
-Fable 5 and Opus 5 use the official Claude Code CLI and a compatible first-party Claude login. You do not need to add an Anthropic API key to Codex.
+```text
+$codex-orchestration:codex-orchestration disable
+```
 
 ## Choose your roles
 
-```text
-$codex-orchestration:codex-orchestration setup planner: <model and effort>, advisor: <model and effort>, designer: <model and effort>, executor: <model and effort>
-```
-
-- Omit `planner` to use the current Codex model as Planner.
-- Omit `advisor` when you do not want plan review.
-- Omit `designer` when you do not need a separate design handoff.
-- `executor` is required.
-- Planner and Advisor must use different configured model routes so the review is independent.
-
-Role labels are literal. A model after `planner:` plans; a model after `advisor:` reviews; a model after `designer:` designs; a model after `executor:` implements. Codex must never move a model to a different role because that model was used differently in an older plugin version. If you omit Designer, the workflow has no Designer. If you specify Planner and Executor but omit Advisor, the workflow has no Advisor.
-
-When every requested route is ready in the current task, the plugin confirms only
-the roles you supplied, in your order:
+Persistent setup accepts explicit role labels:
 
 ```text
-Planner — Fable 5 high: Activated
-Designer — Kimi K3: Activated
-Executor — GPT-5.6 Sol high: Activated
+$codex-orchestration:codex-orchestration setup planner: <model and effort>, advisor: <model and effort>, designer: <model and effort>, executor: <model and effort>, reviewer: <model and effort>
 ```
 
-`Activated` means the route is ready and callable for that task. If an external
-model still needs authentication, qualification, connection, or a restart, the
-plugin reports that exact state and next action instead of claiming activation.
+Role labels are literal:
 
-You can also ask naturally without selecting the skill first:
+- `planner:` configures only Planner.
+- `advisor:` configures only Advisor.
+- `designer:` configures only Designer.
+- `executor:` configures only Executor.
+- `reviewer:` configures only Reviewer.
+
+Omitting a role does not silently move another model into that seat.
+
+Important defaults:
+
+- Omitted Planner means the current Codex root model plans.
+- Omitted Advisor means no separate plan review.
+- Omitted Designer means no separate design handoff.
+- Executor is required for persistent setup.
+- Omitted Reviewer means no separate post-implementation Reviewer.
+- The persisted Claude Sonnet Reviewer default effort is `medium`.
+
+## Bundled Claude subscription routes
+
+The project uses a sealed bridge for audited Claude subscription routes.
+
+Current bundled role families include:
+
+- **Claude Fable 5** — Planner or Advisor.
+- **Claude Opus 5** — Planner or Advisor.
+- **Claude Sonnet 5** — Reviewer.
+
+The current Sonnet Reviewer model identity is qualified as `claude-sonnet-5`.
+
+Only one bundled Claude subscription seat may be configured across Planner, Advisor, and Reviewer at a time. This avoids silently sharing or replacing subscription-backed routes across independent seats.
+
+The bridge:
+
+- uses the official Claude Code CLI;
+- relies on the user's compatible first-party Claude login;
+- does not extract or persist Claude credentials;
+- uses a minimal process environment;
+- disables tools for sealed review calls;
+- disables session persistence;
+- mechanically validates runtime model metadata;
+- fails closed on an unqualified or unexpected primary model identity.
+
+Accounting metadata emitted by a first-party CLI is not treated as proof that an API-billed route was used.
+
+## Reviewer behavior
+
+Reviewer is a root-directed, read-only implementation review role.
+
+The normal sequence is:
+
+1. Executor completes the implementation.
+2. Required tests/verification run.
+3. Root builds a self-contained implementation review packet.
+4. Root calls `review_code`.
+5. Reviewer returns `CODE_REVIEW_PASS` or `CODE_REVIEW_FINDINGS`.
+6. Root validates and adjudicates any findings.
+7. Accepted findings go to Executor.
+8. Executor fixes the accepted issues and reruns verification.
+9. Root may send one fresh packet for the second and final Reviewer pass.
+10. A second material findings result halts without approval.
+
+Reviewer does not contact Executor directly and does not modify implementation files itself.
+
+## Task-local Reviewer overrides
+
+The persisted route is a default, not a per-task invariant.
+
+For a specific review, `review_code` may receive optional task-local:
 
 ```text
-is Kimi available to use as Designer?
+model
+effort
 ```
 
-The plugin checks its External Model registry instead of guessing from the visible
-tool list. It distinguishes whether Kimi K3 is bundled and supported, configured on
-this installation, and callable in the current task. A question performs read-only
-status inspection only; it never authorizes configuration, credentials, or spend.
+Rules:
 
-Examples:
+- omitted fields use the persisted Reviewer route;
+- the model must be a bridge-qualified Reviewer model;
+- the effort must be supported by the qualified Sonnet route;
+- the override applies only to that call;
+- task-local overrides do not mutate saved routing state;
+- arbitrary future Sonnet model strings are rejected until explicitly qualified.
 
-```text
-$codex-orchestration:codex-orchestration setup planner: Claude Fable 5 High, advisor: GPT-5.6 Sol High, executor: GPT-5.6 Luna Extra High
+The currently qualified model is Claude Sonnet 5. Future Sonnet releases can be added without changing the interface, but only after their manifest, allowlist, and runtime identity checks are reviewed.
 
-$codex-orchestration:codex-orchestration setup planner: GPT-5.6 Sol Extra High, advisor: Claude Fable 5 High, executor: GPT-5.6 Luna Extra High
+## Advisor behavior
 
-$codex-orchestration:codex-orchestration setup designer: GPT-5.6 Terra High, executor: GPT-5.6 Luna Extra High
+Advisor is a planning gate, not an implementation reviewer.
 
-$codex-orchestration:codex-orchestration setup executor: GPT-5.6 Luna Extra High
-```
+It returns structured plan decisions such as:
 
-## Bring another model into Codex
+- `PLAN_APPROVED`
+- `PLAN_REVISE`
 
-External Models are roles, not picker entries. Codex stays signed in with ChatGPT,
-the selected GPT model remains root, and the plugin adds only a provider-pinned
-personal agent for each validated effort. It never changes top-level `model` or
-`model_provider`, and disconnect/removal never touches chats, sessions, or OpenAI
-authentication.
+Planner and Advisor may iterate through a bounded approval loop. Advisor reports to the root Codex model; it does not contact Executors directly. Failure to call Advisor or obtain a valid response never counts as approval.
 
-Ask for a role in plain language:
+## External Model roles
 
-```text
-$codex-orchestration:codex-orchestration configure external role researcher with OpenRouter model moonshotai/kimi-k3 at max; job: gather evidence and cite sources
+External Models remain roles rather than Desktop picker entries.
 
-$codex-orchestration:codex-orchestration configure external role designer with OpenRouter model moonshotai/kimi-k3 at max; job: produce a bounded UX specification
+Codex stays signed in with ChatGPT, the selected GPT model remains root, and validated external providers use provider-pinned bounded roles. The plugin does not replace top-level root model/provider state merely to invoke an External Model.
 
-$codex-orchestration:codex-orchestration call researcher at max — review this bounded research packet
-```
+For external providers, setup is deliberately staged. Authentication is performed through the documented hidden local enrollment flow rather than by pasting secrets into chat.
 
-Setup is deliberately staged: preview and prepare the audited provider adapter,
-authenticate through a hidden local prompt backed by the operating-system credential
-store in a trusted terminal, explicitly approve one potentially billable isolated
-Gate 0 probe, create the role variants, then start a new task. Never paste an API
-key into Codex chat. The repository,
-provider TOML, registry, journal, logs, and tests store no key.
+A read-only availability question performs status inspection only; it **never authorizes configuration, credentials, or spend**.
 
-OpenRouter now officially lists the exact ID `moonshotai/kimi-k3`, a 1,048,576-token
-context, a Responses-compatible endpoint, and only `max` reasoning. For this model,
-`auto` resolves to `max`; every other explicit effort is rejected rather than
-clamped. The bundled manifest is no longer experimental, but each installation
-remains unqualified and uncallable until its exact OpenRouter/Kimi/max tuple passes
-the explicitly billable isolated Gate 0. New providers or subscription CLIs still
-require a reviewed bundled manifest and adapter; arbitrary URLs and arbitrary local
-CLIs are not auto-trusted.
+Never paste API keys, bearer tokens, private keys, or other credentials into Codex chat, repository files, provider manifests, tests, or issue reports.
 
-Fable 5 and Opus 5 are sealed subscription exceptions available only as Planner
-or Advisor through first-party Claude login. Only one bundled Claude subscription
-seat may be configured at a time; neither model is a Designer, Executor, general
-custom role, or Desktop picker entry. See the
-[External Models reference](plugins/codex-orchestration/skills/codex-orchestration/references/external-models.md)
-for commands, lifecycle states, extension rules, and threat boundaries.
-Fable 5 is the bundled cross-provider exception retained for compatibility;
-Opus 5 is the second sealed bundled exception added in version 0.9.0.
+See:
 
-The bundled Claude bridge starts each authentication and model subprocess with
-only a minimal platform environment. It preserves `HOME` plus canonical
-operating-system `USER` and `LOGNAME` on POSIX, or `USERPROFILE` on Windows, so
-the official CLI can find the user's first-party login. It does not trust ambient
-POSIX identity values or inherit credential, config-redirection,
-provider/model/effort, endpoint/gateway, proxy/CA/mTLS, or telemetry override
-families.
+- `plugins/codex-orchestration/skills/codex-orchestration/references/external-models.md`
+- `plugins/codex-orchestration/skills/codex-orchestration/references/providers-and-models.md`
 
-Models already available through Codex can still become ordinary user-owned roles:
+## Codex Goals
 
-```text
-$codex-orchestration:codex-orchestration create project role: researcher
-```
+You can use the saved workflow with ordinary Codex Goals.
 
-Project roles live in `.codex/agents/`; personal roles live in
-`~/.codex/agents/`. An unbundled cross-provider model still requires an existing authenticated, compatible provider. Fable 5 and Opus 5 are the bundled cross-provider exceptions.
+Codex still owns:
 
-## Use it with Codex Goals
+- Goal lifecycle and state;
+- permissions and approvals;
+- task integration;
+- verification;
+- final delivery.
 
-Create a Codex Goal normally, then tell Codex to use the saved workflow until the Goal is complete. Codex still owns Goal state, permissions, integration, and verification; the plugin only guides which models perform each role.
+The orchestration plugin guides role routing; it does not silently create, pause, resume, clear, or replace a Goal.
 
 ## Useful prompts
-
-Enter these in Codex chat. They invoke the installed skill; they are not shell
-commands or registered slash commands.
 
 ```text
 $codex-orchestration:codex-orchestration status
 $codex-orchestration:codex-orchestration status --require-effective
 $codex-orchestration:codex-orchestration repair
-$codex-orchestration:codex-orchestration --update
-$codex-orchestration:codex-orchestration setup planner: Claude Fable 5 High, advisor: GPT-5.6 Sol High, designer: GPT-5.6 Terra High, executor: GPT-5.6 Luna Extra High
-$codex-orchestration:codex-orchestration setup advisor: Claude Opus 5 XHigh, executor: GPT-5.6 Luna Extra High
-$codex-orchestration:codex-orchestration Planner: Claude Fable 5 High, Designer: Kimi K3
 $codex-orchestration:codex-orchestration disable
+$codex-orchestration:codex-orchestration --update
 ```
 
-`Designer: Kimi K3` selects the audited task-local External Model role without
-adding Kimi to the Desktop picker or replacing any GPT route. Kimi K3 supports only
-`max` reasoning (`auto` maps to `max`). If the exact role is already ready, the
-plugin invokes it through a sealed, tool-free `codex exec` transport with the task
-packet only on stdin; it never executes an External Model through native
-`agents.spawn_agent`. Otherwise it walks the secure status, preparation,
-hidden authentication, separately authorized Gate 0, connection, restart, and
-readiness states and tells you the exact next action instead of calling the route
-unavailable. The seat label never authorizes credential entry or a paid probe.
+Reviewer setup:
 
-`disable` restores the routing values that existed before setup. It does not delete user-owned custom roles.
+```text
+$codex-orchestration:codex-orchestration setup reviewer: Claude Sonnet 5 Medium, executor: GPT-5.6 Luna Extra High
+```
 
-An Opus seat can be updated in place on the same Planner or Advisor seat,
-including its effort. Replacing Opus with Fable, replacing Fable with Opus,
-moving Opus between Planner and Advisor, or removing Opus through another setup
-requires the prompt `$codex-orchestration:codex-orchestration disable` first,
-followed by one fresh complete setup. This prevents silent subscription route
-replacement.
+Planner + Advisor + Executor + Reviewer:
 
-`repair` is narrower than setup or disable. When status reports that plugin-managed
-mode/usage hints conflict with otherwise intact saved state, it can restore only
-those saved hint bytes after a dry run. It refuses missing state, unmarked text,
-namespace or spawn-metadata drift, bundled Claude launcher drift, concurrent edits,
-and higher-layer overrides. It does not rewrite restore history or touch
-authentication, credentials, chats, or sessions.
+```text
+$codex-orchestration:codex-orchestration setup planner: GPT-5.6 Sol High, advisor: GPT-5.6 Terra Medium, executor: GPT-5.6 Luna High, reviewer: Claude Sonnet 5 Medium
+```
 
 ## Important limits
 
 - Codex remains the root orchestrator and final authority.
-- Planner, Advisor, and Designer report only to Codex; they do not contact one another or Executors directly.
-- Designer may edit only design artifacts explicitly delegated by Codex; it does not change implementation code or release Executor.
-- The workflow reserves bundled Claude planning tools for the root Codex model by policy. Current MCP calls do not identify their caller, so this caller boundary is instruction-enforced; the bridge itself still disables tools, edits, and session persistence.
+- Planner, Advisor, Designer, and Reviewer are bounded specialist roles.
 - Advisor approval is a planning gate, not a guarantee that implementation will succeed.
-- Direct model routes inherit the root provider. Audited external adapters use
-  provider-pinned personal role agents and never enter the model picker.
-- Other unbundled providers must already be configured and authenticated.
-- The plugin never creates credentials or bypasses permissions and approvals. It can prepare a non-secret provider table and retrieve a user-enrolled key from the OS credential store at request time.
-- Codex decides when delegation or parallel work is useful.
-- If you say `no subagents`, Codex must not delegate.
+- Reviewer approval is an implementation review result, not a replacement for tests or root verification.
+- Reviewer is read-only and root-directed.
+- Reviewer has a hard two-review bound.
+- Task-local Reviewer overrides do not persist.
+- Direct model routes remain constrained by provider/routing policy.
+- External provider setup does not bypass authentication, billing consent, permissions, or approvals.
+- If you explicitly say `no subagents`, Codex must not delegate through ordinary native subagents.
+- The project fails closed when bundled external runtime identity cannot be established mechanically.
 
-Technical details are in [providers and models](plugins/codex-orchestration/skills/codex-orchestration/references/providers-and-models.md).
+## Updating this fork
 
-## Update
-
-For version 0.7.0 and newer, ask the installed plugin to update itself:
+To update the installed plugin from this repository, use the plugin's native update flow when the installed source is recognized:
 
 ```text
 $codex-orchestration:codex-orchestration --update
 ```
 
-The skill refuses disabled, local, missing, duplicate, or unexpected sources,
-then delegates refresh and installation only to Codex's native plugin manager and
-verifies the final canonical source, version, and enabled state. It does not remove
-the plugin or touch routing, credentials, chats, sessions, or the model picker.
-Restart Codex Desktop and start a new task after an update; the task that launched
-the updater keeps its already loaded instructions.
+For development, this repository also keeps the original project as `upstream`, so upstream changes can be reviewed and integrated deliberately rather than overwriting fork-specific Reviewer behavior.
 
-If a bundled Claude call fails in the task that performed an update but fresh
-status reports `first-party login ready`, the login is healthy and the already
-loaded MCP bridge is stale. Fully quit and reopen Codex, then start a new task; do
-not re-authenticate solely for that stale-bridge condition.
-
-To move from version 0.6.x or older to 0.7.0, run the native Codex commands once:
-
-```bash
-codex plugin marketplace upgrade codex-orchestration
-codex plugin add codex-orchestration@codex-orchestration
-```
-
-Version **0.6.0 or newer** is required for External Model roles; version **0.7.0
-or newer** adds `--update`, routing repair, and Designer; version **0.7.1 or newer**
-lets the natural `Designer: Kimi K3` label enter the External Model lifecycle;
-version **0.7.2 or newer** uses the concise per-role activation confirmation;
-version **0.8.0 or newer** uses sealed direct CLI invocation for READY External
-Model roles; version **0.9.0 or newer** adds Claude Opus 5 subscription routing.
-Confirm with
-`codex plugin list --json`, then restart Codex Desktop and start a new task.
-
-If the version stays old or `marketplaceSource.sourceType` is `local`, Codex is pointed at a local checkout rather than the GitHub marketplace. Enter the prompt `$codex-orchestration:codex-orchestration disable` first if a saved policy is active, then remove the plugin and that marketplace registration, add `Cjbuilds/Codex-Orchestration` again, and reinstall. This does not delete the local source checkout.
-
-Before downgrading to a version older than the currently saved routing schema, enter the prompt `$codex-orchestration:codex-orchestration disable` with the current version first.
-
-## Uninstall
-
-First enter this prompt in Codex:
-
-```text
-$codex-orchestration:codex-orchestration disable
-```
-
-Then remove the plugin:
-
-```bash
-codex plugin remove codex-orchestration@codex-orchestration
-codex plugin marketplace remove codex-orchestration
-```
-
-Review and remove any user-owned custom roles separately.
+When integrating upstream changes, rerun the relevant routing, bridge, subscription, native-policy, and skill-contract tests before publishing.
 
 ## Development
 
+Install development dependencies:
+
 ```bash
 python3 -m pip install -r requirements-dev.txt
-python3 -m compileall -q plugins tests scripts
-python3 -m ruff check plugins tests scripts
-python3 -m unittest discover -s tests -v
-python3 tests/plugin_lifecycle_smoke.py
-python3 scripts/release_check.py
 ```
 
-See the [production-readiness audit](docs/production-readiness-audit.md), [security policy](SECURITY.md), and [release process](RELEASE.md).
+Core checks:
+
+```bash
+python3 -m compileall -q plugins tests scripts
+python3 -m ruff check plugins tests scripts
+```
+
+Reviewer-related targeted suites:
+
+```bash
+python3 -m unittest discover -s tests -p test_external_providers.py
+python3 -m unittest discover -s tests -p test_external_subscription.py
+python3 -m unittest discover -s tests -p test_routing_state.py
+python3 -m unittest discover -s tests -p test_fable_advisor_mcp.py
+python3 -m unittest discover -s tests -p test_native_routing.py
+python3 -m unittest discover -s tests -p test_skill_contract.py
+```
+
+The upstream full suite may exercise platform-specific filesystem behavior. Treat targeted Reviewer gates and any known baseline platform failures separately; do not convert pre-existing unrelated failures into false Reviewer regressions.
+
+Before committing:
+
+```bash
+git diff --check
+git status --short
+```
+
+## Security
+
+Do not commit:
+
+- API keys or bearer tokens;
+- Claude authentication material;
+- local Codex routing state;
+- `.codex` user state;
+- credential-store exports;
+- private keys;
+- local debug dumps containing secrets.
+
+The bundled Claude bridge is designed to use first-party CLI authentication without copying credentials into project state.
+
+For vulnerability reporting and the inherited security model, see `SECURITY.md`.
+
+## Attribution
+
+This repository is based on **[Cjbuilds/Codex-Orchestration](https://github.com/Cjbuilds/Codex-Orchestration)** and preserves the upstream MIT-licensed work.
+
+The Claude Sonnet Reviewer workflow in this fork extends the upstream orchestration model with a bounded post-implementation review stage while retaining Codex as root orchestrator.
+
+Upstream project:
+
+```text
+https://github.com/Cjbuilds/Codex-Orchestration
+```
+
+This fork:
+
+```text
+https://github.com/taifunix/Codex-Orchestration-Planner-Adviser-Reviewer
+```
+
+## Disclaimer
+
+This is an independent open-source project.
+
+It is **not an official product of, endorsed by, or affiliated with OpenAI, Anthropic, or Cjbuilds**.
+
+"Codex", "OpenAI", "Claude", "Anthropic", and other product or company names are used only to describe interoperability with their respective tools and services. Their trademarks remain the property of their respective owners.
+
+Users are responsible for complying with the terms, account rules, usage limits, and billing rules of any service they connect.
 
 ## License
 
-MIT
+MIT. See `LICENSE`.
+
+Copyright notices and the MIT license text from the project must remain with copies or substantial portions of the software.
