@@ -699,13 +699,13 @@ the approved requirements, implementation diff or equivalent bounded change set,
 and current verification results. Reviewer is read-only: it does not edit files,
 run implementation tools, spawn descendants, contact other roles, or direct Executor.
 
-Use at most two total Reviewer reviews. `CODE_REVIEW_PASS` ends the review loop
+Use at most three total Reviewer reviews. `CODE_REVIEW_PASS` ends the review loop
 immediately. `CODE_REVIEW_FINDINGS` returns material findings to the root for
 adjudication; only accepted findings go back to the configured Executor. After fixes,
-the root reruns the required verification before the second and final Reviewer call.
-If that second call still returns `CODE_REVIEW_FINDINGS`, halt without claiming
+the root reruns the required verification before the third and final Reviewer call.
+If that third call still returns `CODE_REVIEW_FINDINGS`, halt without claiming
 Reviewer approval and return a non-approval artifact with the remaining findings,
-their dispositions, and the latest verification evidence. Never run a third review.
+their dispositions, and the latest verification evidence. Never run a fourth review.
 
 The persisted Reviewer route is the default. For one task, `review_code` may receive
 task-local `model` and `effort` overrides. `model` must be one of the

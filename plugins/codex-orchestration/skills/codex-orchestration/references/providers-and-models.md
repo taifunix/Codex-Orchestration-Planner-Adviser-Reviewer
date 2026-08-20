@@ -29,7 +29,7 @@ These facts were source-checked and runtime-tested on July 10, 2026. Always capa
 | `multi_agent_mode_hint_text` | Replaces the default proactive/explicit mode hint and is sent to root and child tasks | Must contain both root and child boundaries. |
 | Claude Fable 5 MCP route | Root-directed `create_plan`, `revise_plan`, and `review_plan` tools invoke the authenticated Claude Code CLI headlessly with no model tools | Built-in cross-provider Planner or Advisor exception; current MCP requests do not provide caller identity, so caller isolation is policy-enforced. |
 | Claude Opus 5 MCP route | Uses the same bounded compatibility launchers with exact model `claude-opus-5` and Claude Code 2.1.219+ | Sealed cross-provider Planner or Advisor; at most one bundled Claude subscription seat may be active. |
-| Claude Sonnet 5 MCP Reviewer route | Root-directed `review_code` invokes the authenticated Claude Code CLI with exact persisted model `claude-sonnet-5` by default and no model-facing tools | Sealed cross-provider Reviewer after Executor integration and verification; at most two total Reviewer reviews. |
+| Claude Sonnet 5 MCP Reviewer route | Root-directed `review_code` invokes the authenticated Claude Code CLI with exact persisted model `claude-sonnet-5` by default and no model-facing tools | Sealed cross-provider Reviewer after Executor integration and verification; at most three total Reviewer reviews. |
 | `fork_turns` default | `all` | Different model/effort/role overrides are rejected unless the call uses `none` or a positive partial fork. |
 | Effective concurrency | Determined by the active Codex version and `agents.max_threads` configuration | This plugin never changes the limit or forces a worker count. |
 | Older CLI 0.142.5 | Rejects `multi_agent_mode_hint_text` as an unknown feature-table field | Never write the global native policy without checking every known shared-config client. |
@@ -64,7 +64,7 @@ The control surface and the route are separate:
 - optional Planner drafts and revises through the root; omitted Planner means the root plans;
 - optional Advisor is directed through the root and reviews through an eight-round bounded approval loop before Executor work;
 - executor packets are bounded and self-contained;
-- optional Reviewer runs only after Executor integration and verification, with at most two total Reviewer reviews and root adjudication between rounds;
+- optional Reviewer runs only after Executor integration and verification, with at most three total Reviewer reviews and root adjudication between rounds;
 - children do not create descendants;
 - user overrides and `no subagents` win;
 - Goal, permissions, approvals, and worker counts are not changed.

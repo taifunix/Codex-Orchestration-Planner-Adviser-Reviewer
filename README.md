@@ -15,9 +15,9 @@ The main addition is a post-implementation Reviewer stage:
   - `CODE_REVIEW_PASS`
   - `CODE_REVIEW_FINDINGS`
 - Findings are adjudicated by the root Codex model before any fix is accepted.
-- Accepted findings go back to Executor, verification is rerun, and Reviewer may review the fresh result once more.
-- The workflow allows **at most two total Reviewer reviews**.
-- A second material `CODE_REVIEW_FINDINGS` result halts with a non-approval artifact. There is no silent third review and no false "done".
+- Accepted findings go back to Executor, verification is rerun, and Reviewer may review fresh results again.
+- The workflow allows **at most three total Reviewer reviews**.
+- A third material `CODE_REVIEW_FINDINGS` result halts with a non-approval artifact. There is no silent fourth review and no false "done".
 - A single `review_code` call may supply task-local `model` and `effort` overrides. They must be bridge-qualified/supported and **must not persist task-local Reviewer overrides** into routing state.
 - Omitted task-local override fields fall back to the persisted Reviewer route.
 
@@ -99,7 +99,7 @@ The model selected for the Codex task remains the **root orchestrator and final 
 
 Planner and Advisor may iterate until the plan is ready. Codex stops as soon as Advisor returns `PLAN_APPROVED`, with a **safety limit of eight reviews**. If plan approval is not reached within that bound, execution stops and Codex reports the latest plan and unresolved findings.
 
-Reviewer uses a separate, tighter bound: **at most two total Reviewer reviews** after implementation. Reviewer failure or unavailability is never interpreted as approval.
+Reviewer uses a separate, tighter bound: **at most three total Reviewer reviews** after implementation. Reviewer failure or unavailability is never interpreted as approval.
 
 ## Why use it?
 
@@ -247,8 +247,8 @@ The normal sequence is:
 6. Root validates and adjudicates any findings.
 7. Accepted findings go to Executor.
 8. Executor fixes the accepted issues and reruns verification.
-9. Root may send one fresh packet for the second and final Reviewer pass.
-10. A second material findings result halts without approval.
+9. Root may send fresh packets for the second and third Reviewer passes.
+10. A third material findings result halts without approval.
 
 Reviewer does not contact Executor directly and does not modify implementation files itself.
 
@@ -345,7 +345,7 @@ $codex-orchestration:codex-orchestration setup planner: GPT-5.6 Sol High, adviso
 - Advisor approval is a planning gate, not a guarantee that implementation will succeed.
 - Reviewer approval is an implementation review result, not a replacement for tests or root verification.
 - Reviewer is read-only and root-directed.
-- Reviewer has a hard two-review bound.
+- Reviewer has a hard three-review bound.
 - Task-local Reviewer overrides do not persist.
 - Direct model routes remain constrained by provider/routing policy.
 - External provider setup does not bypass authentication, billing consent, permissions, or approvals.

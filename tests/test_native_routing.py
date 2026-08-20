@@ -531,8 +531,8 @@ class NativeRoutingTests(unittest.TestCase):
 
         self.assertEqual(
             getattr(NATIVE, "REVIEWER_REVIEW_LIMIT", None),
-            2,
-            "Reviewer policy must expose one authoritative two-round limit.",
+            3,
+            "Reviewer policy must expose one authoritative three-round limit.",
         )
 
         mode, usage = NATIVE.build_policy(
@@ -542,11 +542,11 @@ class NativeRoutingTests(unittest.TestCase):
             reviewer=reviewer,
         )
 
-        self.assertIn("at most two total Reviewer reviews", mode)
+        self.assertIn("at most three total Reviewer reviews", mode)
         self.assertIn("CODE_REVIEW_PASS ends review early", mode)
         self.assertIn("CODE_REVIEW_FINDINGS", mode)
         self.assertIn("reruns the required verification", mode)
-        self.assertIn("round-two CODE_REVIEW_FINDINGS halts", mode)
+        self.assertIn("round-three CODE_REVIEW_FINDINGS halts", mode)
         self.assertIn("non-approval artifact", mode)
         self.assertIn("remaining Reviewer findings", mode)
         self.assertIn("review_code", usage)
@@ -576,7 +576,7 @@ class NativeRoutingTests(unittest.TestCase):
         )
         self.assertLess(
             mode.index("reruns the required verification"),
-            mode.index("round-two CODE_REVIEW_FINDINGS halts"),
+            mode.index("round-three CODE_REVIEW_FINDINGS halts"),
         )
 
     def test_policy_renders_every_review_bound_from_the_authoritative_limit(

@@ -48,7 +48,7 @@ STATE_SCHEMA = 5
 REVIEWER_POLICY_VERSION = 6
 REVIEWER_STATE_SCHEMA = 6
 ADVISOR_REVIEW_LIMIT = 8
-REVIEWER_REVIEW_LIMIT = 2
+REVIEWER_REVIEW_LIMIT = 3
 STATE_FILENAME = ".codex-orchestration-routing.json"
 PROBE_VALUE = "CODEX_ORCHESTRATION_CAPABILITY_PROBE"
 PLUGIN_ID = "codex-orchestration@codex-orchestration-reviewer"
@@ -493,7 +493,7 @@ class AppServer:
                     "clientInfo": {
                         "name": "codex_orchestration_installer",
                         "title": "Codex Orchestration Installer",
-                        "version": "0.9.3",
+                        "version": "0.9.4",
                     },
                     "capabilities": {"experimentalApi": True},
                 },
@@ -1183,6 +1183,7 @@ def build_policy(
         "zero",
         "one",
         "two",
+        "three",
     )[REVIEWER_REVIEW_LIMIT]
     has_direct_route = executor["kind"] == "model" or (
         planner is not None and planner["kind"] == "model"

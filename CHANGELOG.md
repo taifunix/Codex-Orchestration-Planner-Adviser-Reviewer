@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.9.3 — Unreleased
+## 0.9.4 — Unreleased
+
+- Raise the bounded Reviewer loop from two to three reviews while preserving
+  root adjudication, verification between rounds, and fail-closed completion
+  after a third material findings result.
 
 - Raise the bounded Advisor approval loop from five to eight reviews while
   preserving immediate approval exit and fail-closed plan, ledger, and
