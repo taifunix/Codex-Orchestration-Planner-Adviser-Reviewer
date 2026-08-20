@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.9.4 — Unreleased
+## 0.9.5 — Unreleased
+
+- Allow independent bundled Claude seats for planning and implementation review:
+  Planner/Advisor retain a one-seat limit, while Reviewer may use a separate
+  catalog-selected Opus or Sonnet model through the shared MCP launcher.
+- Accept future catalog-selected `claude-opus-*` and `claude-sonnet-*` model IDs
+  by family validation, with runtime metadata still checked fail closed.
 
 - Raise the bounded Reviewer loop from two to three reviews while preserving
   root adjudication, verification between rounds, and fail-closed completion

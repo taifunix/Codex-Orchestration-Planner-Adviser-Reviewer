@@ -35,8 +35,8 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("--advisor-opus", SKILL)
         self.assertIn("--planner-opus", SKILL)
         self.assertIn("Claude Code 2.1.219 or newer", SKILL)
-        self.assertIn("No Opus helper identity is independently established", SKILL)
-        self.assertIn("more than one bundled Claude subscription seat", SKILL)
+        self.assertIn("Opus remains primary-only until a helper is independently established", SKILL)
+        self.assertIn("more than one bundled Claude planning seat", SKILL)
 
     def test_sonnet_reviewer_contract_is_documented_end_to_end(self) -> None:
         for expected in (
@@ -56,7 +56,7 @@ class SkillContractTests(unittest.TestCase):
             self.assertIn(expected, SKILL)
 
         for expected in (
-            "Claude Sonnet 5 MCP Reviewer route",
+            "Claude Sonnet/Opus MCP Reviewer route",
             "`review_code`",
             "after Executor integration and verification",
             "at most three total Reviewer reviews",
@@ -68,7 +68,7 @@ class SkillContractTests(unittest.TestCase):
 
         for expected in (
             "Claude Fable 5, Claude Opus 5, and Claude Sonnet 5",
-            "Claude Sonnet 5 is sealed to the Reviewer `review_code` operation",
+            "catalog-selected Claude Sonnet or Opus models are sealed to the Reviewer `review_code` operation",
             "no-tools/no-persistence",
             "mechanical runtime model metadata",
         ):
@@ -341,12 +341,8 @@ Executor — GPT-5.6 Sol high: Activated
         self.assertIn("All bundled variants are disabled by default", SKILL)
         self.assertIn("first-party Pro, Max, or Team account", SKILL)
         self.assertIn("never extracts a token", SKILL)
-        self.assertIn(
-            "reviewed Fable primary identity (`claude-fable-5` or "
-            "`claude-opus-4-8`)",
-            SKILL,
-        )
-        self.assertIn("explicit exact helper allowlist", SKILL)
+        self.assertIn("exact persisted Opus or Sonnet primary for that seat", SKILL)
+        self.assertIn("reviewed helper identities", SKILL)
         self.assertIn("unknown additional or missing primary model", SKILL)
         self.assertIn("`create_plan`", SKILL)
         self.assertIn("`revise_plan`", SKILL)

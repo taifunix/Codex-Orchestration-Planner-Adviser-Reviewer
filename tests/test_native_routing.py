@@ -513,7 +513,7 @@ class NativeRoutingTests(unittest.TestCase):
         self.assertIn('Never use fork_turns = "all"', usage)
         self.assertIn("task-local Planner and Advisor must still be distinct", usage)
         self.assertIn("same direct model ID", usage)
-        self.assertIn("more than one bundled Claude subscription seat", usage)
+        self.assertIn("more than one bundled Claude planning seat", usage)
         self.assertIn("If you are a spawned child, do not call this tool", usage)
         self.assertNotIn("tool_namespace", mode + usage)
         self.assertNotIn("enabled = true", mode + usage)
@@ -2098,8 +2098,55 @@ class NativeRoutingTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 2)
-        self.assertIn("at most one bundled Claude subscription seat", result.stderr)
+        self.assertIn("at most one bundled Claude planning seat", result.stderr)
         self.assertFalse((self.home / NATIVE.STATE_FILENAME).exists())
+
+    def test_opus_advisor_and_sonnet_reviewer_share_one_launcher(self) -> None:
+        setup = self.run_script(
+            "--executor-model",
+            "gpt-5.6-luna",
+            "--advisor-opus",
+            "--reviewer-sonnet",
+            "--apply",
+        )
+        self.assertIn("Advisor: Claude Opus 5", setup.stdout)
+        self.assertIn("Reviewer: Claude Sonnet 5", setup.stdout)
+        state = json.loads(
+            (self.home / NATIVE.STATE_FILENAME).read_text(encoding="utf-8")
+        )
+        self.assertEqual(state["schema"], 6)
+        self.assertEqual(state["advisor"]["model"], "claude-opus-5")
+        self.assertEqual(state["reviewer"]["model"], "claude-sonnet-5")
+        self.assertEqual(
+            [server for server, enabled in state["managed"]["mcp"].items() if enabled],
+            ["fable-advisor-python3"],
+        )
+
+        status = self.run_script("--status", "--require-effective")
+        self.assertIn("Advisor: Claude Opus 5", status.stdout)
+        self.assertIn("Reviewer: Claude Sonnet 5", status.stdout)
+
+    def test_subscription_transition_guard_tracks_each_seat(self) -> None:
+        existing_advisor = {
+            "kind": "claude_subscription",
+            "model": "claude-opus-5",
+        }
+        existing_reviewer = {
+            "kind": "claude_subscription",
+            "model": "claude-sonnet-5",
+        }
+        requested_reviewer = {
+            "kind": "claude_subscription",
+            "model": "claude-sonnet-4-7",
+        }
+
+        with self.assertRaisesRegex(NATIVE.ConfigurationError, "reviewer"):
+            NATIVE._guard_subscription_transition(
+                {"advisor": existing_advisor, "reviewer": existing_reviewer},
+                None,
+                existing_advisor,
+                requested_reviewer,
+            )
 
     def test_fable_planner_with_gpt_advisor_uses_one_launcher_and_restores(self) -> None:
         initial = {

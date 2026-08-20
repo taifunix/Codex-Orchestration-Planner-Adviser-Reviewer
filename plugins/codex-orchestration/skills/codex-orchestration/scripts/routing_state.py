@@ -29,6 +29,8 @@ FABLE_SERVERS = frozenset(
 
 _SCHEMA_POLICY_PAIRS = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6}
 _MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:+/@-]{0,199}$")
+_CLAUDE_OPUS_MODEL_RE = re.compile(r"^claude-opus-[0-9][A-Za-z0-9._-]*$")
+_CLAUDE_SONNET_MODEL_RE = re.compile(r"^claude-sonnet-[0-9][A-Za-z0-9._-]*$")
 _AGENT_RE = re.compile(r"^[a-z][a-z0-9_]{0,62}$")
 _EFFORT_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 _BASE_TOP_LEVEL_KEYS = frozenset(
@@ -51,6 +53,18 @@ _BASE_PREVIOUS_KEYS = frozenset({"mode", "usage", "metadata", "namespace"})
 
 class RoutingStateError(ValueError):
     """The persisted value is not one exact supported routing-state contract."""
+
+
+def is_opus_model(model: Any) -> bool:
+    return isinstance(model, str) and _CLAUDE_OPUS_MODEL_RE.fullmatch(model) is not None
+
+
+def is_sonnet_model(model: Any) -> bool:
+    return isinstance(model, str) and _CLAUDE_SONNET_MODEL_RE.fullmatch(model) is not None
+
+
+def is_bundled_claude_model(model: Any) -> bool:
+    return model == FABLE_MODEL or is_opus_model(model) or is_sonnet_model(model)
 
 
 def _require(condition: bool, detail: str) -> None:
@@ -108,7 +122,7 @@ def _validate_route(route: Any, *, seat: str, schema: int) -> str:
             f"{seat} model route has an invalid model",
         )
         _require(
-            route["model"] not in {FABLE_MODEL, OPUS_MODEL, SONNET_MODEL},
+            not is_bundled_claude_model(route["model"]),
             f"{seat} model route uses a reserved Claude model",
         )
         _require(
@@ -159,8 +173,8 @@ def _validate_route(route: Any, *, seat: str, schema: int) -> str:
         )
         if seat == "reviewer":
             _require(
-                route["model"] == SONNET_MODEL,
-                "Claude Reviewer subscription model is not pinned",
+                is_opus_model(route["model"]) or is_sonnet_model(route["model"]),
+                "Claude Reviewer subscription model must be an Opus or Sonnet model",
             )
             _require(
                 type(route["effort"]) is str and route["effort"] in SONNET_EFFORTS,
@@ -168,8 +182,8 @@ def _validate_route(route: Any, *, seat: str, schema: int) -> str:
             )
         else:
             _require(
-                route["model"] == OPUS_MODEL,
-                "Claude subscription model is not pinned",
+                is_opus_model(route["model"]),
+                "Claude planning subscription model must be an Opus model",
             )
             _require(
                 type(route["effort"]) is str and route["effort"] in OPUS_EFFORTS,
@@ -336,15 +350,26 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
     ):
         _validate_snapshot(previous[key], expected_type)
 
+    planning_routes = [
+        route
+        for route in (planner, advisor)
+        if type(route) is dict
+        and route.get("kind") in {"fable", "claude_subscription"}
+    ]
+    _require(
+        len(planning_routes) <= 1,
+        "more than one bundled Claude planning seat is configured",
+    )
     subscription_routes = [
         route
         for route in (planner, advisor, reviewer)
         if type(route) is dict
         and route.get("kind") in {"fable", "claude_subscription"}
     ]
+    subscription_servers = {route["server"] for route in subscription_routes}
     _require(
-        len(subscription_routes) <= 1,
-        "more than one Claude subscription seat is configured",
+        len(subscription_servers) <= 1,
+        "bundled Claude seats must use one shared launcher",
     )
     if managed_has_mcp:
         managed_mcp = managed["mcp"]
@@ -367,7 +392,7 @@ def validate_routing_state(value: Any) -> dict[str, Any]:
         true_servers = []
 
     if subscription_routes:
-        selected_server = subscription_routes[0]["server"]
+        selected_server = next(iter(subscription_servers))
         _require(
             true_servers == [selected_server],
             "MCP state must enable exactly the selected Claude launcher",

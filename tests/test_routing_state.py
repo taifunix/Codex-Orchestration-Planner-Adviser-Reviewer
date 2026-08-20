@@ -47,10 +47,11 @@ def opus_route(server: str = "fable-advisor-python3") -> dict[str, str]:
 
 def sonnet_reviewer_route(
     server: str = "fable-advisor-python3",
+    model: str = "claude-sonnet-5",
 ) -> dict[str, str]:
     return {
         "kind": "claude_subscription",
-        "model": "claude-sonnet-5",
+        "model": model,
         "effort": "medium",
         "server": server,
     }
@@ -122,6 +123,52 @@ class RoutingStateTests(unittest.TestCase):
         state["reviewer"] = sonnet_reviewer_route()
 
         self.assertIs(STATE.validate_routing_state(state), state)
+
+    def test_schema_six_allows_opus_advisor_and_sonnet_reviewer(self) -> None:
+        state = genuine_state(5)
+        state["schema"] = 6
+        state["policy_version"] = 6
+        state["planner"] = None
+        state["advisor"] = opus_route()
+        state["reviewer"] = sonnet_reviewer_route()
+
+        self.assertIs(STATE.validate_routing_state(state), state)
+
+    def test_schema_six_rejects_mixed_planner_advisor_seats_even_with_reviewer(self) -> None:
+        state = genuine_state(5)
+        state["schema"] = 6
+        state["policy_version"] = 6
+        state["advisor"] = opus_route()
+        state["reviewer"] = sonnet_reviewer_route()
+
+        with self.assertRaisesRegex(
+            STATE.RoutingStateError, "Planner and Advisor routes are not independent"
+        ):
+            STATE.validate_routing_state(state)
+
+    def test_schema_six_accepts_catalog_selected_opus_and_sonnet_models(self) -> None:
+        state = genuine_state(5)
+        state["schema"] = 6
+        state["policy_version"] = 6
+        state["planner"] = None
+        state["advisor"] = opus_route()
+        state["advisor"]["model"] = "claude-opus-4-8"
+        state["reviewer"] = sonnet_reviewer_route(model="claude-sonnet-4-7")
+
+        self.assertIs(STATE.validate_routing_state(state), state)
+
+    def test_schema_six_rejects_unqualified_claude_family_strings(self) -> None:
+        state = genuine_state(5)
+        state["schema"] = 6
+        state["policy_version"] = 6
+        state["planner"] = None
+        state["advisor"] = opus_route()
+        state["reviewer"] = sonnet_reviewer_route(model="claude-sonnet-latest")
+
+        with self.assertRaisesRegex(
+            STATE.RoutingStateError, "must be an Opus or Sonnet model"
+        ):
+            STATE.validate_routing_state(state)
 
     def test_scalar_conversion_and_retained_disabled_mcp_are_accepted(self) -> None:
         state = genuine_state(3)

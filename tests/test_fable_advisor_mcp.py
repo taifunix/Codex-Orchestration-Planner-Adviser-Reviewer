@@ -58,6 +58,15 @@ class FableAdvisorMcpTests(unittest.TestCase):
             "server": "fable-advisor-python3",
         }
 
+    @staticmethod
+    def sonnet_reviewer_route(effort: str = "medium") -> dict[str, str]:
+        return {
+            "kind": "claude_subscription",
+            "model": "claude-sonnet-5",
+            "effort": effort,
+            "server": "fable-advisor-python3",
+        }
+
     def write_state(self, *, schema: int = 3, **seats: object) -> None:
         subscription_routes = [
             route
@@ -720,6 +729,30 @@ class FableAdvisorMcpTests(unittest.TestCase):
             review_command[review_command.index("--system-prompt") + 1],
             FABLE.ADVISOR_SYSTEM_PROMPT,
         )
+
+    def test_opus_advisor_and_sonnet_reviewer_dispatch_to_their_own_models(self) -> None:
+        self.write_state(
+            schema=6,
+            advisor=self.opus_route("xhigh"),
+            reviewer=self.sonnet_reviewer_route(),
+        )
+        plan, plan_calls = self.invoke_with_results(
+            FABLE.review_plan,
+            "packet",
+            model_response="PLAN_APPROVED\nGood",
+            model_usage={FABLE.OPUS_MODEL: {"outputTokens": 1}},
+        )
+        review, review_calls = self.invoke_with_results(
+            FABLE.review_code,
+            "packet",
+            model_response="CODE_REVIEW_PASS\nGood",
+            model_usage={FABLE.SONNET_MODEL: {"outputTokens": 1}},
+        )
+
+        self.assertEqual(plan["model"], FABLE.OPUS_MODEL)
+        self.assertEqual(review["model"], FABLE.SONNET_MODEL)
+        self.assertEqual(plan_calls[1][0][plan_calls[1][0].index("--model") + 1], FABLE.OPUS_MODEL)
+        self.assertEqual(review_calls[1][0][review_calls[1][0].index("--model") + 1], FABLE.SONNET_MODEL)
 
     def test_seat_authorization_does_not_cross_planner_and_advisor(self) -> None:
         self.write_state(planner=self.route())

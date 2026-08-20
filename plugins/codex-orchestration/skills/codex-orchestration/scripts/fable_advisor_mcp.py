@@ -27,9 +27,8 @@ STATE_FILENAME = ".codex-orchestration-routing.json"
 MANAGED_MARKER = routing_state.MANAGED_MARKER
 FABLE_MODEL = routing_state.FABLE_MODEL
 OPUS_MODEL = routing_state.OPUS_MODEL
-SONNET_MODEL = "claude-sonnet-5"
+SONNET_MODEL = routing_state.SONNET_MODEL
 SONNET_EFFORTS = routing_state.SONNET_EFFORTS
-REVIEWER_MODELS = frozenset({SONNET_MODEL})
 FABLE_SERVERS = routing_state.FABLE_SERVERS
 SUPPORTED_EFFORTS = routing_state.FABLE_EFFORTS
 # Claude Code currently reports this exact internal helper alongside Fable for
@@ -384,19 +383,27 @@ def _first_non_empty_line(response: str) -> str:
 def _validate_runtime_models(
     usage: Any, primary_model: str = FABLE_MODEL
 ) -> list[str]:
-    allowed_models = ALLOWED_RUNTIME_MODELS_BY_PRIMARY.get(primary_model)
-    reviewed_primaries = REVIEWED_PRIMARY_MODELS_BY_ROUTE.get(primary_model)
-    if allowed_models is None or reviewed_primaries is None:
-        raise AdvisorError("The configured Claude primary model is not sealed.")
     if primary_model == FABLE_MODEL:
+        allowed_models = ALLOWED_RUNTIME_MODELS_BY_PRIMARY[FABLE_MODEL]
+        reviewed_primaries = REVIEWED_PRIMARY_MODELS_BY_ROUTE[FABLE_MODEL]
         policy_label = "Fable"
         primary_label = "Claude Fable 5"
-    elif primary_model == OPUS_MODEL:
+    elif routing_state.is_opus_model(primary_model):
+        allowed_models = frozenset({primary_model})
+        reviewed_primaries = frozenset({primary_model})
         policy_label = "Claude"
-        primary_label = "Claude Opus 5"
-    elif primary_model == SONNET_MODEL:
+        primary_label = (
+            "Claude Opus 5" if primary_model == OPUS_MODEL else f"Claude Opus ({primary_model})"
+        )
+    elif routing_state.is_sonnet_model(primary_model):
+        allowed_models = frozenset({primary_model, FABLE_HELPER_MODEL})
+        reviewed_primaries = frozenset({primary_model})
         policy_label = "Claude"
-        primary_label = "Claude Sonnet 5"
+        primary_label = (
+            "Claude Sonnet 5"
+            if primary_model == SONNET_MODEL
+            else f"Claude Sonnet ({primary_model})"
+        )
     else:
         raise AdvisorError("The configured Claude primary model is not sealed.")
     if not isinstance(usage, dict):
@@ -633,7 +640,13 @@ def _invoke_fable(
         if seat != "reviewer":
             raise AdvisorError("Task-local Claude overrides are Reviewer-only.")
         if model_override is not None:
-            if not isinstance(model_override, str) or model_override not in REVIEWER_MODELS:
+            if not (
+                isinstance(model_override, str)
+                and (
+                    routing_state.is_opus_model(model_override)
+                    or routing_state.is_sonnet_model(model_override)
+                )
+            ):
                 raise AdvisorError("Reviewer model override is not qualified.")
             route["model"] = model_override
         if effort_override is not None:
@@ -642,10 +655,18 @@ def _invoke_fable(
             route["effort"] = effort_override
     if route["model"] == FABLE_MODEL:
         display_name = "Claude Fable 5"
-    elif route["model"] == OPUS_MODEL:
-        display_name = "Claude Opus 5"
-    elif route["model"] == SONNET_MODEL:
-        display_name = "Claude Sonnet 5"
+    elif routing_state.is_opus_model(route["model"]):
+        display_name = (
+            "Claude Opus 5"
+            if route["model"] == OPUS_MODEL
+            else f"Claude Opus ({route['model']})"
+        )
+    elif routing_state.is_sonnet_model(route["model"]):
+        display_name = (
+            "Claude Sonnet 5"
+            if route["model"] == SONNET_MODEL
+            else f"Claude Sonnet ({route['model']})"
+        )
     else:
         raise AdvisorError("The configured Claude primary model is not sealed.")
     claude = resolve_claude()
@@ -983,7 +1004,7 @@ def tool_definitions() -> list[dict[str, Any]]:
                     },
                     "model": {
                         "type": "string",
-                        "enum": sorted(REVIEWER_MODELS),
+                        "pattern": r"^claude-(opus|sonnet)-[0-9][A-Za-z0-9._-]*$",
                         "description": (
                             "Optional qualified task-local Reviewer model override. "
                             "Omit to use the persisted Reviewer model."

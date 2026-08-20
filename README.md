@@ -21,7 +21,7 @@ The main addition is a post-implementation Reviewer stage:
 - A single `review_code` call may supply task-local `model` and `effort` overrides. They must be bridge-qualified/supported and **must not persist task-local Reviewer overrides** into routing state.
 - Omitted task-local override fields fall back to the persisted Reviewer route.
 
-Future Sonnet versions are not accepted merely because their names look compatible. A new model must be reviewed, qualified, allowlisted, and mechanically attested by runtime metadata before the bridge will use it.
+Catalog-selected `claude-opus-*` and `claude-sonnet-*` model IDs are accepted by family without a source-file update; the bridge still verifies the exact persisted ID and observed runtime metadata fail closed.
 
 ## Roles
 
@@ -218,7 +218,7 @@ Current bundled role families include:
 
 The current Sonnet Reviewer model identity is qualified as `claude-sonnet-5`.
 
-Only one bundled Claude subscription seat may be configured across Planner, Advisor, and Reviewer at a time. This avoids silently sharing or replacing subscription-backed routes across independent seats.
+Planner and Advisor may configure at most one bundled Claude planning seat between them. Reviewer is an independent bundled Claude seat, so Opus Advisor plus Sonnet/Opus Reviewer is valid; all bundled seats must use the same managed launcher.
 
 The bridge:
 
@@ -270,9 +270,9 @@ Rules:
 - the effort must be supported by the qualified Sonnet route;
 - the override applies only to that call;
 - task-local overrides do not mutate saved routing state;
-- arbitrary future Sonnet model strings are rejected until explicitly qualified.
+- arbitrary model strings outside the `claude-opus-*` and `claude-sonnet-*` catalog families are rejected.
 
-The currently qualified model is Claude Sonnet 5. Future Sonnet releases can be added without changing the interface, but only after their manifest, allowlist, and runtime identity checks are reviewed.
+The default model is Claude Sonnet 5. Future catalog-selected Sonnet or Opus releases can be selected without changing the interface; exact runtime identity checks remain required.
 
 ## Advisor behavior
 
