@@ -261,7 +261,7 @@ class PackagingTests(unittest.TestCase):
             manifest["version"],
             r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$",
         )
-        self.assertEqual(marketplace["name"], "codex-orchestration")
+        self.assertEqual(marketplace["name"], "codex-orchestration-reviewer")
         self.assertEqual(len(marketplace["plugins"]), 1)
         entry = marketplace["plugins"][0]
         self.assertEqual(entry["name"], "codex-orchestration")
@@ -348,9 +348,9 @@ class PackagingTests(unittest.TestCase):
         invocation = "$codex-orchestration:codex-orchestration"
         raw_slash = "/codex-orchestration"
         allowed_readme_fragments = (
-            "[External Models reference](plugins/codex-orchestration/skills/"
+            "[external-models.md](plugins/codex-orchestration/skills/"
             "codex-orchestration/references/external-models.md)",
-            "[providers and models](plugins/codex-orchestration/skills/"
+            "[providers-and-models.md](plugins/codex-orchestration/skills/"
             "codex-orchestration/references/providers-and-models.md)",
         )
 
@@ -384,16 +384,13 @@ class PackagingTests(unittest.TestCase):
             skill,
         )
         self.assertIn("available or callable as Designer", skill)
-        self.assertIn("is Kimi available to use as Designer?", readme)
-        self.assertIn(f"{invocation} setup executor:", readme)
+        self.assertIn(f"{invocation} setup planner:", readme)
         self.assertIn("GPT-5.6 Luna Extra High", readme)
-        self.assertIn(f"{invocation} create project role:", readme)
         self.assertIn(f"{invocation} status", readme)
         self.assertIn(f"{invocation} disable", readme)
-        self.assertIn(f"{invocation} --update", readme)
-        self.assertIn("designer: GPT-5.6", readme)
         self.assertIn(
-            "codex plugin add codex-orchestration@codex-orchestration", readme
+            "codex plugin add codex-orchestration@codex-orchestration-reviewer",
+            readme,
         )
 
         unreviewed_raw_cases = (
@@ -481,10 +478,12 @@ class PackagingTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        self.assertIn("Other unbundled providers must already be configured and authenticated", readme)
+        self.assertIn(
+            "Other unbundled providers must already be configured and authenticated",
+            readme,
+        )
         self.assertIn("never creates credentials or bypasses permissions", readme)
         self.assertIn("Codex decides when delegation or parallel work is useful", readme)
-        self.assertIn("Fable 5 is the bundled cross-provider exception", readme)
         self.assertIn('ROUTING_TOOL_NAMESPACE = "agents"', routing_state)
 
     def test_ascii_and_role_copy_are_plain_and_root_centered(self) -> None:
@@ -493,7 +492,7 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("CODEX COORDINATES THE WORK", readme)
         self.assertIn("PLANNER CREATES THE FIRST PLAN", readme)
         self.assertIn("ADVISOR REVIEWS IT", readme)
-        self.assertIn("EXECUTORS IMPLEMENT IT", readme)
+        self.assertIn("EXECUTOR IMPLEMENTS IT", readme)
         self.assertIn("CODEX TESTS & DELIVERS", readme)
         self.assertNotIn("SOL IS THE ORCHESTRATOR", readme)
 
@@ -527,38 +526,34 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("Models already available through Codex", readme)
         self.assertIn("an existing authenticated, compatible provider", readme)
         self.assertIn("do not need to add an Anthropic API key to Codex", readme)
-        self.assertIn("`.codex/agents/`", readme)
-        self.assertIn("`~/.codex/agents/`", readme)
-        skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
-        self.assertIn("explicit exact helper allowlist", skill)
-        self.assertIn("unknown additional or missing primary model", skill)
 
-    def test_speed_and_limit_copy_is_clear_and_qualified(self) -> None:
+    def test_readme_does_not_make_speed_or_limit_promises(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("up to 2x faster on suitable tasks", readme)
-        self.assertIn("limits about 40% less often", readme)
-        self.assertIn("speed and limit figures are targets, not guarantees", readme)
+        self.assertNotIn("up to 2x faster", readme)
+        self.assertNotIn("limits about 40% less often", readme)
 
-    def test_fable_is_the_primary_quick_start(self) -> None:
+    def test_recommended_quick_start_uses_the_default_orchestration(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
-        self.assertIn("## Quick start", readme)
+        self.assertIn("## Recommended Setup", readme)
         self.assertIn(
-            "planner: Claude Fable 5 High",
+            "planner: GPT-5.6 Sol High",
             readme,
         )
-        self.assertIn("Fable defaults to **High**", readme)
-        self.assertIn("**Low**, **Medium**, **High**, **XHigh**, or **Max**", readme)
-        self.assertIn("**Ultra** is accepted as an alias for Max", readme)
-        self.assertIn("advisor: GPT-5.6 Sol High", readme)
+        self.assertIn("advisor: Claude Opus 5 High", readme)
+        self.assertIn("executor: GPT-5.6 Luna Extra High", readme)
+        self.assertIn("reviewer: Claude Sonnet 5 Medium", readme)
 
     def test_update_and_uninstall_remove_managed_state_explicitly(self) -> None:
         readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
 
         self.assertIn("$codex-orchestration:codex-orchestration status", readme)
-        self.assertIn("Version **0.6.0 or newer**", readme)
-        self.assertIn("`marketplaceSource.sourceType` is `local`", readme)
+        self.assertIn("codex plugin marketplace upgrade codex-orchestration-reviewer", readme)
+        self.assertIn(
+            "codex plugin add codex-orchestration@codex-orchestration-reviewer",
+            readme,
+        )
         self.assertIn("`disable` restores the routing values", readme)
         self.assertIn("does not delete user-owned custom roles", readme)
         self.assertIn("Review and remove any user-owned custom roles separately", readme)
