@@ -520,7 +520,7 @@ class AppServer:
                     "clientInfo": {
                         "name": "codex_orchestration_installer",
                         "title": "Codex Orchestration Installer",
-                        "version": "0.9.5",
+                        "version": "0.9.6",
                     },
                     "capabilities": {"experimentalApi": True},
                 },

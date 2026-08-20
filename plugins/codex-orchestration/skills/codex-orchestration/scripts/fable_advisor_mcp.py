@@ -145,7 +145,7 @@ STALE_BRIDGE_RECOVERY = (
 ADVISOR_SYSTEM_PROMPT = """You are the configured Claude model acting only as a plan advisor to Codex's root orchestrator.
 Review the supplied self-contained packet for material correctness, missing constraints, unsafe sequencing, ownership conflicts, and verification gaps. Do not edit files, call tools, spawn agents, contact the Planner or executors, or attempt implementation.
 
-Return the required structured fields `signal` and `body`. Use signal PLAN_APPROVED only when no material gap is present. Use PLAN_REVISE when correction is needed. The body must be non-empty. For PLAN_REVISE, assign every material finding a stable, unique finding ID and give a concrete correction. On later rounds, preserve IDs from the supplied cumulative ledger. Ignore style preferences. Report only to the root orchestrator."""
+Return exactly one JSON object with exactly the required `signal` and `body` fields. Do not return Markdown, fences, headings, or prose outside that object. Use signal PLAN_APPROVED only when no material gap is present. Use PLAN_REVISE when correction is needed. The body must be non-empty. For PLAN_REVISE, assign every material finding a stable, unique finding ID and give a concrete correction. On later rounds, preserve IDs from the supplied cumulative ledger. Ignore style preferences. Report only to the root orchestrator."""
 
 PLANNER_CREATE_SYSTEM_PROMPT = """You are the configured Claude model acting only as a plan author for Codex's root orchestrator.
 Create a concrete implementation plan from the supplied self-contained packet. Include constraints, ownership, sequencing, acceptance criteria, security and compatibility boundaries, and behavioral plus regression verification. Do not edit files, call tools, spawn agents, contact the Advisor or executors, or attempt implementation.
@@ -169,7 +169,13 @@ Both sections must be non-empty. Your first non-empty line must be exactly PLAN_
 REVIEWER_SYSTEM_PROMPT = """You are Claude Sonnet 5 acting only as the code Reviewer for Codex's root orchestrator.
 Review the supplied self-contained implementation packet for material correctness, regressions, security issues, violated requirements, unsafe behavior, missing verification, and implementation defects. Do not edit files, call tools, spawn agents, browse, contact other roles, or attempt implementation.
 
-Return only the required structured fields `signal` and `body`. Use CODE_REVIEW_PASS only when no material finding remains. Use CODE_REVIEW_FINDINGS when correction is required. For findings, assign stable IDs such as R-1, R-2, state severity, identify the affected file or component when the packet supports it, and give a concrete correction or verification requirement. Ignore cosmetic style preferences. Report only to the root orchestrator."""
+Return exactly one JSON object with exactly the required `signal` and `body` fields. Do not return Markdown, fences, headings, or prose outside that object. Use CODE_REVIEW_PASS only when no material finding remains. Use CODE_REVIEW_FINDINGS when correction is required. For findings, assign stable IDs such as R-1, R-2, state severity, identify the affected file or component when the packet supports it, and give a concrete correction or verification requirement. Ignore cosmetic style preferences. Report only to the root orchestrator."""
+
+PLAN_REVIEW_RESPONSE_FORMAT = """\n\n# REQUIRED_RESPONSE_FORMAT
+Return exactly one JSON object and no other text: {\"signal\":\"PLAN_APPROVED or PLAN_REVISE\",\"body\":\"non-empty review\"}."""
+
+CODE_REVIEW_RESPONSE_FORMAT = """\n\n# REQUIRED_RESPONSE_FORMAT
+Return exactly one JSON object and no other text: {\"signal\":\"CODE_REVIEW_PASS or CODE_REVIEW_FINDINGS\",\"body\":\"non-empty review\"}."""
 
 # Backward-compatible public constant for existing importers.
 SYSTEM_PROMPT = ADVISOR_SYSTEM_PROMPT
@@ -862,7 +868,7 @@ def review_plan(packet: str) -> dict[str, Any]:
     signal, response, route, auth, used_models = _invoke_fable(
         operation="plan review",
         seat="advisor",
-        prompt=values["packet"],
+        prompt=values["packet"] + PLAN_REVIEW_RESPONSE_FORMAT,
         system_prompt=ADVISOR_SYSTEM_PROMPT,
         allowed_signals={"PLAN_APPROVED", "PLAN_REVISE"},
     )
@@ -882,7 +888,7 @@ def review_code(
     signal, response, route, auth, used_models = _invoke_fable(
         operation="code review",
         seat="reviewer",
-        prompt=values["packet"],
+        prompt=values["packet"] + CODE_REVIEW_RESPONSE_FORMAT,
         system_prompt=REVIEWER_SYSTEM_PROMPT,
         allowed_signals={"CODE_REVIEW_PASS", "CODE_REVIEW_FINDINGS"},
         model_override=model,

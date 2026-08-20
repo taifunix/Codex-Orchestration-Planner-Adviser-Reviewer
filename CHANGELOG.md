@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.9.5 — Unreleased
+## 0.9.6 — Unreleased
+
+- Require literal JSON review decisions in the Claude system prompts so current
+  Claude Code releases cannot return unstructured Markdown where the bridge
+  requires the existing fail-closed decision schema.
+
+## 0.9.5
 
 - Allow independent bundled Claude seats for planning and implementation review:
   Planner/Advisor retain a one-seat limit, while Reviewer may use a separate

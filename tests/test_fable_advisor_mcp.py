@@ -31,6 +31,21 @@ DEFAULT_STRUCTURED_OUTPUT = object()
 AUTO_STRUCTURED_OUTPUT = object()
 
 
+class FableAdvisorMcpPromptTests(unittest.TestCase):
+    def test_review_prompts_require_one_json_object_when_cli_omits_structured_output(self) -> None:
+        for prompt in (FABLE.ADVISOR_SYSTEM_PROMPT, FABLE.REVIEWER_SYSTEM_PROMPT):
+            self.assertIn("exactly one JSON object", prompt)
+            self.assertIn("Do not return Markdown", prompt)
+
+    def test_review_input_ends_with_a_literal_json_response_format(self) -> None:
+        for response_format in (
+            FABLE.PLAN_REVIEW_RESPONSE_FORMAT,
+            FABLE.CODE_REVIEW_RESPONSE_FORMAT,
+        ):
+            self.assertIn("# REQUIRED_RESPONSE_FORMAT", response_format)
+            self.assertIn("exactly one JSON object", response_format)
+
+
 class FableAdvisorMcpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -324,7 +339,10 @@ class FableAdvisorMcpTests(unittest.TestCase):
             json.loads(review_command[review_command.index("--json-schema") + 1]),
             FABLE.PLAN_REVIEW_SCHEMA,
         )
-        self.assertEqual(review_kwargs["input"], "Review this complete plan.")
+        self.assertEqual(
+            review_kwargs["input"],
+            "Review this complete plan." + FABLE.PLAN_REVIEW_RESPONSE_FORMAT,
+        )
         for kwargs in (auth_kwargs, review_kwargs):
             sanitized = kwargs["env"]
             self.assertIsInstance(sanitized, dict)
